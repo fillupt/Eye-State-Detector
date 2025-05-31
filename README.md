@@ -1,2 +1,22 @@
-# Eye-State-Detector
-The Eye State Detector uses Mediapipe and OpenCV to detect if eyes are open or closed in real-time via webcam. It calculates the Eye Aspect Ratio (EAR) from facial landmarks. If EAR &lt; 0.25, eyes are closed; otherwise, they’re open. The system overlays status and eye outlines on the video feed.
+# 👁️ Eye State Detector
+
+A real-time Eye State Detector using Mediapipe and OpenCV to identify whether eyes are open or closed from webcam footage.
+
+## 🔍 Features
+- Real-time eye detection
+- Calculates Eye Aspect Ratio (EAR)
+- Displays status: "Eyes Open" or "Eyes Closed"
+- Visualizes eye landmarks on video
+
+## 🛠️ Technologies
+- Python
+- OpenCV
+- Mediapipe
+- NumPy
+
+## 🚀 How to Run
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-username/eye-state-detector.git
+   cd eye-state-detector
