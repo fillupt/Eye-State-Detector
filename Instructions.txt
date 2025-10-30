@@ -2,12 +2,52 @@ Python 3.12 (e.g. 3.12.10)
 Add to PATH during install.
 
 Open terminal (e.g. PowerShell)
+```plaintext
+Recommended environment & setup
+
+1) Install Python 3.12 (or compatible 3.11/3.12). Add it to PATH when installing if you want `py`/`python` available from the terminal.
+
+2) Create a virtual environment (local to the project)
+
+	Open PowerShell in the project root and run:
+
 	py -3.12 -m venv eye-env
-	eye-env\Scripts\activate
 
-Should activate env
-Install dependencies:
-	pip install opencv-python mediapipe numpy
+3) Install dependencies
 
-Now can run:
-python Eye_State_Detector.py
+	Use the venv's Python to install pinned dependencies from `requirements.txt`:
+
+	# activate the venv (PowerShell)
+	.\eye-env\Scripts\Activate.ps1
+
+	# then install
+	pip install -r requirements.txt
+
+	Alternatively (no activation needed), run:
+	C:\git\Eye-State-Detector\eye-env\Scripts\python.exe -m pip install -r requirements.txt
+
+4) Run the detector script
+
+	python Eye_State_Detector.py
+
+5) Open the notebook
+
+	You can open `eye_state_detection.ipynb` in VS Code (recommended) or in Jupyter Lab/Notebook:
+
+	# with venv activated
+	jupyter lab
+
+Notes
+- The repository no longer includes the full `eye-env/` virtual environment. The `.gitignore` file excludes `eye-env/` to avoid committing large binary packages.
+- If you previously committed `eye-env/` and want to untrack it (already done if you removed it from the index), use:
+
+  git rm -r --cached .\eye-env
+  git commit -m "Remove committed virtualenv; add to .gitignore"
+
+- If you need the project to reproduce exactly, `requirements.txt` contains the pinned package versions from the environment that was used while developing this project.
+
+If you want, I can also:
+- produce a trimmed `requirements.txt` (only the minimal packages needed by the project),
+- convert the notebook to a runnable script, or
+- help purge the venv from git history entirely (useful when repo size must be reduced).
+```
