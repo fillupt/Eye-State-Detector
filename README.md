@@ -18,5 +18,5 @@ A real-time Eye State Detector using Mediapipe and OpenCV to identify whether ey
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/eye-state-detector.git
+   git clone https://github.com/fillupt/Eye-State-Detector
    cd eye-state-detector
