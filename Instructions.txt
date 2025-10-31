@@ -1,77 +1,48 @@
 Python 3.12 (e.g. 3.12.10)
 Add to PATH during install.
 
-Open terminal (e.g. PowerShell)
-```plaintext
-Recommended environment & setup
+Python 3.12 (recommended)
 
-1) Install Python 3.12 (or compatible 3.11/3.12). Add it to PATH when installing if you want `py`/`python` available from the terminal.
+Quick start (launcher-first)
 
-2) Create a virtual environment (local to the project)
+1) Create and activate a virtual environment (PowerShell)
 
-	Open PowerShell in the project root and run:
+   py -3.12 -m venv eye-env
+   .\eye-env\Scripts\Activate.ps1
 
-	py -3.12 -m venv eye-env
+2) Install dependencies
 
-3) Install dependencies
+   pip install -r requirements.txt
 
-	Use the venv's Python to install pinned dependencies from `requirements.txt`:
+3) Use the launcher (preferred)
 
-	# activate the venv (PowerShell)
-	.\eye-env\Scripts\Activate.ps1
+   The launcher is the primary entry point for this project. It manages configuration, provides a small GUI for selecting
+   task files and options (Setup...), and starts/stops the detector process. Run:
 
-	# then install
-	pip install -r requirements.txt
+   C:\git\Eye-State-Detector\eye-env\Scripts\python.exe c:\git\Eye-State-Detector\launcher.py
 
-	Alternatively (no activation needed), run:
-	C:\git\Eye-State-Detector\eye-env\Scripts\python.exe -m pip install -r requirements.txt
+   From within the launcher you can:
+   - Enter a name, choose a save directory, and press Start.
+   - Open Setup... to select the three task files (Reading / Video / Interactive) and toggle SANDE / OSDI-6 options. Selections are
+	 persisted to `launcher_config.json` in the repo root.
+   - The launcher starts `Eye_State_Detector.py` as a child process and polls for `tracker.ready` to know when initialization is complete.
 
-4) Run the detector script
+4) Running the detector directly (advanced)
 
-	python Eye_State_Detector.py
+   You can run `Eye_State_Detector.py` directly for debugging, but note the launcher is intended to be the master controller.
+   When you run the detector directly it will still function, but it will not receive the launcher-managed configuration (task files,
+   save directory, or option flags) unless you pass them manually.
 
-5) Open the notebook
+   Example (direct run):
 
-	You can open `eye_state_detection.ipynb` in VS Code (recommended) or in Jupyter Lab/Notebook:
+   C:\git\Eye-State-Detector\eye-env\Scripts\python.exe c:\git\Eye-State-Detector\Eye_State_Detector.py
 
-	Recommended environment & setup
+Notes
 
-	1) Install Python 3.12 (or compatible 3.11/3.12). Add it to PATH when installing if you want `py`/`python` available from the terminal.
+- Configuration persisted by the launcher lives in `launcher_config.json` (repo root). The detector writes `tracker.ready` when it
+  finishes initialization; the launcher watches that file to update its UI.
+- `eye_state_detection.ipynb` was removed in favor of a script-first workflow.
+- The virtual environment directory `eye-env/` is gitignored to avoid committing large files.
 
-	2) Create a virtual environment (local to the project)
-
-		Open PowerShell in the project root and run:
-
-		py -3.12 -m venv eye-env
-
-	3) Install dependencies
-
-		Use the venv's Python to install pinned dependencies from `requirements.txt`:
-
-		# activate the venv (PowerShell)
-		.\eye-env\Scripts\Activate.ps1
-
-		# then install
-		pip install -r requirements.txt
-
-		Alternatively (no activation needed), run:
-		C:\git\Eye-State-Detector\eye-env\Scripts\python.exe -m pip install -r requirements.txt
-
-	4) Run the detector script
-
-		python Eye_State_Detector.py
-
-	Notes
-
-	- The repository no longer includes the full `eye-env/` virtual environment. The `.gitignore` file excludes `eye-env/` to avoid committing large binary packages.
-	- If you previously committed `eye-env/` and want to untrack it (already done if you removed it from the index), use:
-
-	  git rm -r --cached .\eye-env
-	  git commit -m "Remove committed virtualenv; add to .gitignore"
-
-	- `eye_state_detection.ipynb` (the Jupyter notebook) has been removed from the repository — this project is now script-first. Use `Eye_State_Detector.py` to run the detector.
-
-	If you want, I can also:
-	- produce a trimmed `requirements.txt` (only the minimal packages needed by the project),
-	- convert parts of the notebook logic into a cleaned module or CLI, or
-	- help purge the venv from git history entirely (useful when repo size must be reduced).
+If you want the launcher to pass selected task files and flags to `Eye_State_Detector.py`, I can add safe CLI flags and wire them
+up so the detector receives those values. For now the launcher remains the master and the detector is left unchanged.
