@@ -257,14 +257,14 @@ class Launcher(tk.Tk):
         rowpad = dict(pady=8, padx=12)
 
         # Helper to render a task row (label, choose button, filename label)
-        def add_task_row(parent, title, getter):
+        def add_task_row(parent, title, getter, filetypes=None):
             frame = tk.Frame(parent, bg="#111827")
             frame.pack(fill="x", **rowpad)
             lbl = tk.Label(frame, text=title + ":", bg="#111827", fg="#e5e7eb", font=label_font, width=14, anchor="w")
             lbl.pack(side="left")
 
             def choose_file():
-                path = filedialog.askopenfilename(title=f"Choose {title}", initialdir=ROOT_DIR)
+                path = filedialog.askopenfilename(title=f"Choose {title}", initialdir=ROOT_DIR, filetypes=filetypes)
                 if path:
                     # Update backing storage and persist
                     getter(path)
@@ -338,7 +338,10 @@ class Launcher(tk.Tk):
             self._save_config()
 
         reading_var = add_task_row(win, "Reading task", set_reading)
-        video_var = add_task_row(win, "Video task", set_video)
+        video_var = add_task_row(win, "Video task", set_video, filetypes=[
+            ("Video files", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm *.m4v *.mpeg *.mpg"),
+            ("All files", "*.*")
+        ])
         interactive_var = add_task_row(win, "Interactive task", set_interactive)
 
         # Options row (checkboxes)
