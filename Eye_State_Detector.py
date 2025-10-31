@@ -41,6 +41,23 @@ EAR_THRESHOLD = 0.25
 # Start webcam
 cap = cv2.VideoCapture(0)
 
+# Simple stop-button state and rectangle (updated each frame)
+STOP_FLAG = False
+btn_rect = [0, 0, 0, 0]  # x1, y1, x2, y2
+btn_w, btn_h = 100, 36
+
+def _on_mouse(event, x, y, flags, param):
+    """Mouse callback to stop the loop when the on-screen button is clicked."""
+    global STOP_FLAG, btn_rect
+    if event == cv2.EVENT_LBUTTONDOWN:
+        x1, y1, x2, y2 = btn_rect
+        if x1 <= x <= x2 and y1 <= y <= y2:
+            STOP_FLAG = True
+
+# Create a named window and attach mouse callback so button clicks work
+cv2.namedWindow("Eye State Detection")
+cv2.setMouseCallback("Eye State Detection", _on_mouse)
+
 # Variables to track eye closure duration
 eye_closed_start = None
 last_closed_duration = 0
@@ -85,8 +102,24 @@ while True:
             draw_eye(frame, LEFT_EYE, landmarks)
             draw_eye(frame, RIGHT_EYE, landmarks)
 
+    # Draw the stop button at top-right (so it's visible and clickable)
+    x2 = w - 10
+    x1 = x2 - btn_w
+    y1 = 10
+    y2 = y1 + btn_h
+    btn_rect[0], btn_rect[1], btn_rect[2], btn_rect[3] = x1, y1, x2, y2
+
+    # Draw button (semi-transparent effect by overlay)
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 0, 255), -1)
+    alpha = 0.6
+    cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+    cv2.putText(frame, "Stop", (x1 + 12, y1 + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+    # Show frame and handle keypresses; ESC to exit
     cv2.imshow("Eye State Detection", frame)
-    if cv2.waitKey(1) & 0xFF == 27:  # ESC to exit
+    key = cv2.waitKey(1) & 0xFF
+    if key == 27 or STOP_FLAG:
         break
 
 cap.release()
