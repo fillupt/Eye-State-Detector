@@ -1,9 +1,10 @@
 {
   "save_dir": "C:/Users/ptur022/OneDrive - The University of Auckland/Desktop/Blink tracker data",
   "task_reading": "",
-  "task_video": "",
-  "task_interactive": "",
-  "sande": false,
-  "osdi6": false,
-  "last_name": "test"
+  "task_video": "C:/Users/ptur022/OneDrive/Videos/Virtual Patient Demo Reel 2022.mp4",
+  "task_interactive": "c:\\git\\Eye-State-Detector\\trivia_general_knowledge.json",
+  "sande": true,
+  "osdi6": true,
+  "last_name": "test1",
+  "duration_minutes": 8
 }

@@ -16,16 +16,23 @@ Quick start (launcher-first)
 
 3) Use the launcher (preferred)
 
-   The launcher is the primary entry point for this project. It manages configuration, provides a small GUI for selecting
+   The launcher is the primary entry point for this project. It manages configuration, provides a GUI for selecting
    task files and options (Setup...), and starts/stops the detector process. Run:
 
    C:\git\Eye-State-Detector\eye-env\Scripts\python.exe c:\git\Eye-State-Detector\launcher.py
 
    From within the launcher you can:
-   - Enter a name, choose a save directory, and press Start.
-   - Open Setup... to select the three task files (Reading / Video / Interactive) and toggle SANDE / OSDI-6 options. Selections are
-	 persisted to `launcher_config.json` in the repo root.
-   - The launcher starts `Eye_State_Detector.py` as a child process and polls for `tracker.ready` to know when initialization is complete.
+   - Enter a participant name, choose a save directory, and press Start.
+   - Open Setup... to:
+     * Select the three task files:
+       - Reading task file (text/PDF)
+       - Video task file (MP4, AVI, MOV, etc.)
+       - Interactive task file (JSON trivia questions - defaults to trivia_general_knowledge.json)
+     * Toggle SANDE and/or OSDI-6 questionnaire options
+     * Set task duration (1-15 minutes)
+   - Configuration is persisted to `launcher_config.json` in the repo root
+   - Task order is automatically assigned based on existing CSV files (modulo 6)
+   - The launcher starts `Eye_State_Detector.py` as a child process and polls for `tracker.ready`
 
 4) Running the detector directly (advanced)
 
@@ -41,6 +48,14 @@ Notes
 
 - Configuration persisted by the launcher lives in `launcher_config.json` (repo root). The detector writes `tracker.ready` when it
   finishes initialization; the launcher watches that file to update its UI.
+- New task components:
+  * `questionnaires.py` - QuestionnaireWindow (SANDE + OSDI-6) and TriviaMCQWindow classes
+  * `video_player.py` - VideoPlayerWindow class for video task playback
+  * `trivia_general_knowledge.json` - 330 trivia questions with randomization
+- Output directories:
+  * Main eye tracking data: save directory root
+  * Questionnaire data: `questionnaires/` subfolder
+  * Trivia results: `trivia/` subfolder
 - `eye_state_detection.ipynb` was removed in favor of a script-first workflow.
 - The virtual environment directory `eye-env/` is gitignored to avoid committing large files.
 

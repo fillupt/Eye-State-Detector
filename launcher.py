@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 import subprocess
@@ -8,6 +9,22 @@ from tkinter import filedialog, font, messagebox
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Task order permutations (6 possible orders for 3 tasks)
+# Order number is determined by (file_count % 6)
+TASK_ORDERS = {
+    0: ["Reading", "Video", "Interactive"],
+    1: ["Reading", "Interactive", "Video"],
+    2: ["Video", "Reading", "Interactive"],
+    3: ["Video", "Interactive", "Reading"],
+    4: ["Interactive", "Reading", "Video"],
+    5: ["Interactive", "Video", "Reading"],
+}
+
+
+def get_order_code(task_list):
+    """Convert task list to letter code (e.g., ['Reading', 'Video', 'Interactive'] -> 'RVI')"""
+    return ''.join(task[0] for task in task_list)
+
 
 def find_python_executable():
     # Prefer the current Python interpreter (so a venv works if launcher is run from it)
@@ -17,7 +34,7 @@ def find_python_executable():
 class Launcher(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Blink or they're gone — Launcher")
+        self.title("Blink or they're gone!")
         self.configure(bg="#1f2937")
         self.process = None
 
@@ -48,13 +65,17 @@ class Launcher(tk.Tk):
         btn_frame = tk.Frame(self, bg="#1f2937")
         btn_frame.pack(pady=(4, 6))
 
-        # Single toggle button
-        self.toggle_btn = tk.Button(btn_frame, text="Start", command=self.toggle_tracker, bg="#10b981", fg="#03241b", padx=12, pady=8, relief="flat", font=label_font)
-        self.toggle_btn.pack(side="left", padx=8)
+        # Preview button (toggle eye tracker with window for verification)
+        self.preview_btn = tk.Button(btn_frame, text="Preview", command=self.toggle_preview, bg="#3b82f6", fg="#fff", padx=12, pady=8, relief="flat", font=label_font)
+        self.preview_btn.pack(side="left", padx=4)
+
+        # Start button (run full experiment with sequential tasks)
+        self.start_btn = tk.Button(btn_frame, text="Start", command=self.start_experiment, bg="#10b981", fg="#03241b", padx=12, pady=8, relief="flat", font=label_font)
+        self.start_btn.pack(side="left", padx=4)
 
         # Setup button (opens settings window)
         setup_btn = tk.Button(btn_frame, text="Setup", command=self.open_setup_window, bg="#8b5cf6", fg="#fff", padx=10, pady=8, relief="flat", font=label_font)
-        setup_btn.pack(side="left", padx=8)
+        setup_btn.pack(side="left", padx=4)
 
         # Ensure task/file attributes exist
         self.task_reading = ""
@@ -64,9 +85,33 @@ class Launcher(tk.Tk):
         self.osdi6 = False
         self.last_name = ""
         self.save_dir = ""
+        self.duration_minutes = 5  # Default 5 minutes
+        self._needs_config_save = False  # Flag for deferred config save
 
         # Load saved config (if any)
         self._load_config()
+        
+        # Set default trivia file if not already set
+        if not self.task_interactive:
+            default_trivia = os.path.join(ROOT_DIR, "trivia_general_knowledge.json")
+            if os.path.exists(default_trivia):
+                self.task_interactive = default_trivia
+                self._needs_config_save = True
+        
+        # Save config if files were cleared or defaults were set
+        if self._needs_config_save:
+            self._save_config()
+            self._needs_config_save = False
+        
+        # Calculate task order based on existing files
+        self.task_order_num = self._calculate_task_order()
+        self.task_order = TASK_ORDERS[self.task_order_num]
+        self.task_order_code = get_order_code(self.task_order)
+        
+        # Display task order code on home screen (blinded - only show letter code)
+        order_label = tk.Label(self, text=f"Task Order: {self.task_order_code}", 
+                               bg="#1f2937", fg="#fbbf24", font=label_font)
+        order_label.pack(pady=(8, 0))
 
         self.status_label = tk.Label(self, text="Status: Idle", bg="#1f2937", fg="#9ca3af", font=label_font)
         self.status_label.pack(pady=(8, 0))
@@ -80,6 +125,18 @@ class Launcher(tk.Tk):
         x = (screen_w // 2) - (self.width // 2)
         y = (screen_h // 2) - (self.height // 2)
         self.geometry(f"{self.width}x{self.height}+{x}+{y}")
+    
+    def _calculate_task_order(self):
+        """Count existing CSV files in save directory and return order number (0-5)."""
+        if not self.save_dir or not os.path.isdir(self.save_dir):
+            return 0
+        
+        # Count CSV files matching the pattern YYYYMMDDTHHMM-*.csv
+        csv_files = glob.glob(os.path.join(self.save_dir, "*-*.csv"))
+        file_count = len(csv_files)
+        
+        print(f"[DEBUG] Found {file_count} existing CSV files, order = {file_count % 6}", file=sys.stderr)
+        return file_count % 6
 
     def start_tracker(self):
         # Start process and begin polling for readiness
@@ -91,12 +148,14 @@ class Launcher(tk.Tk):
         # Pass save directory if configured
         if self.save_dir:
             cmd += ["--outdir", self.save_dir]
+        # Pass task order code (e.g., "RVI")
+        cmd += ["--order", self.task_order_code]
 
         try:
             self.process = subprocess.Popen(cmd, cwd=ROOT_DIR)
-            self.status_label.config(text=f"Status: Initializing (PID {self.process.pid})", fg="#fef3c7")
+            self.status_label.config(text=f"Status: Prewarming (PID {self.process.pid})", fg="#fef3c7")
             # Update UI to show initializing state
-            self.toggle_btn.config(text="Initializing...", state="disabled", bg="#f59e0b", fg="#2b0500")
+            self.preview_btn.config(text="Initializing...", state="disabled", bg="#f59e0b", fg="#2b0500")
             # Start polling for ready file and process state
             self.after(500, self._poll_ready)
         except Exception as e:
@@ -121,6 +180,7 @@ class Launcher(tk.Tk):
 
     def _load_config(self):
         cfg = self._config_path()
+        config_modified = False
         try:
             if os.path.exists(cfg):
                 with open(cfg, "r", encoding="utf-8") as f:
@@ -128,35 +188,84 @@ class Launcher(tk.Tk):
                 sd = data.get("save_dir")
                 if sd and os.path.exists(sd):
                     self.save_dir = sd
-                    display = sd if len(sd) <= 80 else f"...{sd[-77:]}"
-                    self.dir_label.config(text=f"Save dir: {display}")
+                    # Don't update UI here - dir_label doesn't exist yet during __init__
 
-                # Load persisted task/file paths and flags
-                self.task_reading = data.get("task_reading", "") or ""
-                self.task_video = data.get("task_video", "") or ""
-                self.task_interactive = data.get("task_interactive", "") or ""
+                # Load persisted task/file paths and validate they exist
+                task_reading = data.get("task_reading", "") or ""
+                task_video = data.get("task_video", "") or ""
+                task_interactive = data.get("task_interactive", "") or ""
+                
+                # Validate task files - clear if they don't exist
+                if task_reading and not os.path.exists(task_reading):
+                    print(f"Warning: Reading task file not found: {task_reading}")
+                    task_reading = ""
+                    config_modified = True
+                
+                if task_video and not os.path.exists(task_video):
+                    print(f"Warning: Video task file not found: {task_video}")
+                    task_video = ""
+                    config_modified = True
+                
+                if task_interactive and not os.path.exists(task_interactive):
+                    print(f"Warning: Interactive task file not found: {task_interactive}")
+                    task_interactive = ""
+                    config_modified = True
+                
+                self.task_reading = task_reading
+                self.task_video = task_video
+                self.task_interactive = task_interactive
+                
                 self.sande = bool(data.get("sande", False))
                 self.osdi6 = bool(data.get("osdi6", False))
                 self.last_name = data.get("last_name", "") or ""
+                # Load duration with proper type conversion
+                duration_val = data.get("duration_minutes", 5)
+                try:
+                    self.duration_minutes = int(duration_val)
+                except (ValueError, TypeError):
+                    self.duration_minutes = 5
+                
+                # Save config if any files were cleared
+                if config_modified:
+                    # Use a flag to save after __init__ completes
+                    self._needs_config_save = True
+                
                 if self.last_name:
                     self.name_var.set(self.last_name)
-        except Exception:
-            # ignore config load errors
-            pass
+                
+                print(f"[DEBUG] Config loaded - sande={self.sande}, osdi6={self.osdi6}, duration={self.duration_minutes}", file=sys.stderr)
+        except Exception as e:
+            print(f"[ERROR] Config load failed: {e}", file=sys.stderr)
 
     def _save_config(self):
         cfg = self._config_path()
         try:
+            # Ensure duration_minutes is an integer
+            duration = self.duration_minutes
+            if not isinstance(duration, int):
+                try:
+                    duration = int(duration)
+                except (ValueError, TypeError):
+                    duration = 5
+            
+            config_data = {
+                "save_dir": self.save_dir,
+                "task_reading": self.task_reading,
+                "task_video": self.task_video,
+                "task_interactive": self.task_interactive,
+                "sande": bool(self.sande),
+                "osdi6": bool(self.osdi6),
+                "last_name": self.name_var.get().strip(),
+                "duration_minutes": duration,
+            }
+            
+            print(f"[DEBUG] Saving config - sande={config_data['sande']}, osdi6={config_data['osdi6']}, duration={config_data['duration_minutes']}", file=sys.stderr)
+            
             with open(cfg, "w", encoding="utf-8") as f:
-                json.dump({
-                    "save_dir": self.save_dir,
-                    "task_reading": self.task_reading,
-                    "task_video": self.task_video,
-                    "task_interactive": self.task_interactive,
-                    "sande": bool(self.sande),
-                    "osdi6": bool(self.osdi6),
-                    "last_name": self.name_var.get().strip(),
-                }, f, indent=2)
+                json.dump(config_data, f, indent=2)
+        except Exception as e:
+            # Log the error instead of silently ignoring
+            print(f"Error saving config: {e}", file=sys.stderr)
         except Exception:
             # bubble up to caller if needed
             raise
@@ -165,7 +274,7 @@ class Launcher(tk.Tk):
         # Stop the running tracker process
         if self.process is None:
             self.status_label.config(text="Status: Idle", fg="#9ca3af")
-            self.toggle_btn.config(text="Start", state="normal", bg="#10b981", fg="#03241b")
+            self.preview_btn.config(text="Preview", state="normal", bg="#3b82f6", fg="#fff")
             return
         if self.process.poll() is None:
             try:
@@ -182,29 +291,29 @@ class Launcher(tk.Tk):
             self.status_label.config(text="Status: Idle", fg="#9ca3af")
         self.process = None
         # Reset button
-        self.toggle_btn.config(text="Start", state="normal", bg="#10b981", fg="#03241b")
+        self.preview_btn.config(text="Preview", state="normal", bg="#3b82f6", fg="#fff")
 
     def _poll_ready(self):
         """Poll for the ready file or process exit to update UI state."""
         ready_path = os.path.join(ROOT_DIR, "tracker.ready")
         # If process exited
         if self.process is None or (self.process.poll() is not None):
-            self.status_label.config(text="Status: Not running", fg="#fca5a5")
-            self.toggle_btn.config(text="Start", state="normal", bg="#10b981", fg="#03241b")
+            self.status_label.config(text="Status: Stopped", fg="#fca5a5")
+            self.preview_btn.config(text="Preview", state="normal", bg="#3b82f6", fg="#fff")
             self.process = None
             return
         # If ready file exists, the tracker is running
         if os.path.exists(ready_path):
             self.status_label.config(text=f"Status: Running (PID {self.process.pid})", fg="#86efac")
-            self.toggle_btn.config(text="Stop", state="normal", bg="#ef4444", fg="#fff")
+            self.preview_btn.config(text="Stop", state="normal", bg="#ef4444", fg="#fff")
             # Continue polling to detect when process exits
             self.after(500, self._poll_ready)
         else:
             # Still initializing, keep polling
             self.after(500, self._poll_ready)
 
-    def toggle_tracker(self):
-        # Single-button handler
+    def toggle_preview(self):
+        """Toggle preview mode - eye tracker with window for verification."""
         if self.process is None or (self.process.poll() is not None):
             # Save last name when starting
             try:
@@ -215,8 +324,152 @@ class Launcher(tk.Tk):
             self.start_tracker()
         else:
             # currently running -> stop
-            self.toggle_btn.config(text="Stopping...", state="disabled", bg="#ef4444", fg="#fff")
+            self.preview_btn.config(text="Stopping...", state="disabled", bg="#ef4444", fg="#fff")
             self.stop_tracker()
+    
+    def start_experiment(self):
+        """Start the full experiment with sequential tasks."""
+        name = self.name_var.get().strip()
+        if not name:
+            messagebox.showwarning("Name Required", "Please enter a participant name before starting.")
+            return
+        
+        # Verify at least one task is configured
+        if not any([self.task_reading, self.task_video, self.task_interactive]):
+            messagebox.showwarning("No Tasks", "Please configure at least one task in Setup before starting.")
+            return
+        
+        # Save last name
+        try:
+            self.last_name = name
+            self._save_config()
+        except Exception:
+            pass
+        
+        # Disable buttons during experiment
+        self.start_btn.config(state="disabled")
+        self.preview_btn.config(state="disabled")
+        
+        # Start the experiment sequence
+        self._run_experiment_sequence()
+    
+    def _run_experiment_sequence(self):
+        """Run the experiment tasks in sequence."""
+        try:
+            name = self.name_var.get().strip()
+            duration_seconds = self.duration_minutes * 60
+            
+            # Start eye tracker in headless mode (will be implemented)
+            self.status_label.config(text="Status: Starting eye tracker...", fg="#fbbf24")
+            self.update()
+            
+            # TODO: Start headless eye tracker here
+            # For now, we'll just run the tasks
+            
+            # Run each task in order
+            # Note: Questionnaires (SANDE/OSDI) are now part of Interactive task
+            for i, task_name in enumerate(self.task_order, 1):
+                self.status_label.config(text=f"Status: Task {i}/3 - {task_name}", fg="#86efac")
+                self.update()
+                
+                if task_name == "Reading":
+                    self._run_reading_task(name, duration_seconds)
+                elif task_name == "Video":
+                    self._run_video_task(name, duration_seconds)
+                elif task_name == "Interactive":
+                    self._run_interactive_task(name, duration_seconds)
+
+            
+            # TODO: Stop eye tracker here
+            
+            self.status_label.config(text="Status: Experiment Complete!", fg="#86efac")
+            messagebox.showinfo("Complete", "Experiment completed successfully!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error during experiment:\n{e}")
+            self.status_label.config(text="Status: Error", fg="#fca5a5")
+        finally:
+            # Re-enable buttons
+            self.start_btn.config(state="normal")
+            self.preview_btn.config(state="normal")
+    
+    def _run_questionnaires(self):
+        """
+        DEPRECATED: Questionnaires are now part of InteractiveTaskWindow.
+        This method is kept for backwards compatibility.
+        """
+        from questionnaires import QuestionnaireWindow
+        
+        win = QuestionnaireWindow(
+            self,
+            participant_name=self.name_var.get().strip(),
+            order_code=self.task_order_code,
+            save_dir=self.save_dir or ROOT_DIR
+        )
+        self.wait_window(win)
+    
+    def _run_reading_task(self, name, duration_seconds):
+        """Run the reading task."""
+        if not self.task_reading:
+            return
+        
+        # TODO: Implement reading task window
+        messagebox.showinfo("Reading Task", f"Reading task would run here for {duration_seconds}s\nFile: {self.task_reading}")
+    
+    def _run_video_task(self, name, duration_seconds):
+        """Run the video task."""
+        if not self.task_video:
+            return
+        
+        from video_player import VideoPlayerWindow
+        
+        def on_ready():
+            """Called when video is loaded and ready"""
+            print(f"Video task ready - recording would start here")
+            # TODO: Send START_RECORDING command to eye tracker
+        
+        player = VideoPlayerWindow(
+            self,
+            video_file=self.task_video,
+            participant_name=name,
+            order_code=self.task_order_code,
+            duration_seconds=duration_seconds,
+            save_dir=self.save_dir or ROOT_DIR,
+            on_ready_callback=on_ready
+        )
+        self.wait_window(player)
+        
+        # TODO: Send STOP_RECORDING command to eye tracker
+        print(f"Video task completed")
+    
+    def _run_interactive_task(self, name, duration_seconds):
+        """Run the unified interactive task (SANDE + OSDI + Trivia MCQs)."""
+        if not self.task_interactive:
+            return
+        
+        from questionnaires import InteractiveTaskWindow
+        
+        def on_ready():
+            """Called when interactive window is fully loaded"""
+            print(f"Interactive task ready - recording would start here")
+            # TODO: Send START_RECORDING command to eye tracker
+        
+        interactive = InteractiveTaskWindow(
+            self,
+            trivia_file=self.task_interactive,
+            duration_seconds=duration_seconds,
+            participant_name=name,
+            order_code=self.task_order_code,
+            save_dir=self.save_dir or ROOT_DIR,
+            on_ready_callback=on_ready,
+            enable_sande=True,  # TODO: Make configurable in settings
+            enable_osdi=True    # TODO: Make configurable in settings
+        )
+        self.wait_window(interactive)
+        
+        # TODO: Send STOP_RECORDING command to eye tracker
+        print(f"Interactive task completed")
+
 
     def on_close(self):
         # Stop child process if running
@@ -232,7 +485,7 @@ class Launcher(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Setup — Task files and options")
         win.configure(bg="#111827")
-        win.geometry("560x320")
+        win.geometry("560x370")
         # center relative to main window
         win.transient(self)
         # Position the setup window centered over the main launcher window
@@ -257,7 +510,7 @@ class Launcher(tk.Tk):
         rowpad = dict(pady=8, padx=12)
 
         # Helper to render a task row (label, choose button, filename label)
-        def add_task_row(parent, title, getter, filetypes=None):
+        def add_task_row(parent, title, getter, filetypes=None, is_interactive=False):
             frame = tk.Frame(parent, bg="#111827")
             frame.pack(fill="x", **rowpad)
             lbl = tk.Label(frame, text=title + ":", bg="#111827", fg="#e5e7eb", font=label_font, width=14, anchor="w")
@@ -315,6 +568,34 @@ class Launcher(tk.Tk):
 
             lbl_name.bind("<Enter>", show_tooltip)
             lbl_name.bind("<Leave>", hide_tooltip)
+            
+            # If this is the interactive task, add SANDE/OSDI checkboxes below
+            if is_interactive:
+                opts_frame = tk.Frame(parent, bg="#111827")
+                opts_frame.pack(fill="x", pady=(2, 4), padx=12)
+                
+                # Indent to align with the file picker content
+                indent = tk.Label(opts_frame, text="", bg="#111827", width=14)
+                indent.pack(side="left")
+                
+                opts_label = tk.Label(opts_frame, text="Questionnaires:", bg="#111827", fg="#9ca3af", font=label_font)
+                opts_label.pack(side="left", padx=(6, 12))
+                
+                sande_var = tk.BooleanVar(value=bool(self.sande))
+                osdi_var = tk.BooleanVar(value=bool(self.osdi6))
+
+                def on_sande():
+                    self.sande = bool(sande_var.get())
+                    self._save_config()
+
+                def on_osdi():
+                    self.osdi6 = bool(osdi_var.get())
+                    self._save_config()
+
+                cb1 = tk.Checkbutton(opts_frame, text="SANDE", variable=sande_var, command=on_sande, bg="#111827", fg="#e5e7eb", selectcolor="#111827")
+                cb1.pack(side="left", padx=(0, 12))
+                cb2 = tk.Checkbutton(opts_frame, text="OSDI-6", variable=osdi_var, command=on_osdi, bg="#111827", fg="#e5e7eb", selectcolor="#111827")
+                cb2.pack(side="left", padx=(0, 12))
 
             return fname_var
 
@@ -337,32 +618,71 @@ class Launcher(tk.Tk):
             self.task_interactive = path or ""
             self._save_config()
 
-        reading_var = add_task_row(win, "Reading task", set_reading)
-        video_var = add_task_row(win, "Video task", set_video, filetypes=[
-            ("Video files", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm *.m4v *.mpeg *.mpg"),
-            ("All files", "*.*")
-        ])
-        interactive_var = add_task_row(win, "Interactive task", set_interactive)
+        # Create task mapping for reordering based on task_order
+        task_map = {
+            "Reading": ("Reading task", set_reading, None),
+            "Video": ("Video task", set_video, [
+                ("Video files", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm *.m4v *.mpeg *.mpg"),
+                ("All files", "*.*")
+            ]),
+            "Interactive": ("Interactive task", set_interactive, [
+                ("JSON files", "*.json"),
+                ("All files", "*.*")
+            ]),
+        }
+        
+        # Add label showing task order code (blinded)
+        order_frame = tk.Frame(win, bg="#111827")
+        order_frame.pack(fill="x", pady=(8, 4), padx=12)
+        order_info = tk.Label(order_frame, 
+                             text=f"Task Order: {self.task_order_code}", 
+                             bg="#111827", fg="#fbbf24", font=label_font, anchor="w")
+        order_info.pack(side="left")
+        
+        print(f"[DEBUG] Setup window opening - sande={self.sande}, osdi6={self.osdi6}, duration={self.duration_minutes}", file=sys.stderr)
+        
+        # Add task rows in the correct order
+        for task_name in self.task_order:
+            title, getter, filetypes = task_map[task_name]
+            # Mark Interactive task to include questionnaire checkboxes
+            is_interactive = (task_name == "Interactive")
+            add_task_row(win, title, getter, filetypes=filetypes, is_interactive=is_interactive)
 
-        # Options row (checkboxes)
-        opts = tk.Frame(win, bg="#111827")
-        opts.pack(fill="x", pady=(6, 4), padx=12)
-
-        sande_var = tk.BooleanVar(value=bool(self.sande))
-        osdi_var = tk.BooleanVar(value=bool(self.osdi6))
-
-        def on_sande():
-            self.sande = bool(sande_var.get())
+        # Duration slider
+        duration_frame = tk.Frame(win, bg="#111827")
+        duration_frame.pack(fill="x", pady=(8, 4), padx=12)
+        
+        dur_lbl = tk.Label(duration_frame, text="Duration:", bg="#111827", fg="#e5e7eb", font=label_font, width=14, anchor="w")
+        dur_lbl.pack(side="left")
+        
+        # Create the value label first so it can be referenced in the callback
+        duration_value_lbl = tk.Label(duration_frame, text=f"{self.duration_minutes} min", bg="#111827", fg="#9ca3af", font=label_font, width=8, anchor="w")
+        duration_value_lbl.pack(side="right", padx=(6, 0))
+        
+        duration_var = tk.IntVar(value=self.duration_minutes)
+        
+        def on_duration_change(val):
+            minutes = int(float(val))
+            duration_value_lbl.config(text=f"{minutes} min")
+            self.duration_minutes = minutes
             self._save_config()
-
-        def on_osdi():
-            self.osdi6 = bool(osdi_var.get())
-            self._save_config()
-
-        cb1 = tk.Checkbutton(opts, text="SANDE", variable=sande_var, command=on_sande, bg="#111827", fg="#e5e7eb", selectcolor="#111827")
-        cb1.pack(side="left", padx=(6, 12))
-        cb2 = tk.Checkbutton(opts, text="OSDI-6", variable=osdi_var, command=on_osdi, bg="#111827", fg="#e5e7eb", selectcolor="#111827")
-        cb2.pack(side="left", padx=(6, 12))
+        
+        duration_slider = tk.Scale(
+            duration_frame,
+            from_=1,
+            to=15,
+            orient="horizontal",
+            variable=duration_var,
+            command=on_duration_change,
+            bg="#374151",
+            fg="#e5e7eb",
+            highlightthickness=0,
+            troughcolor="#1f2937",
+            activebackground="#4b5563",
+            showvalue=False,
+            length=200
+        )
+        duration_slider.pack(side="left", padx=(6, 8), fill="x", expand=True)
 
         # Save directory section
         save_frame = tk.Frame(win, bg="#111827")
@@ -422,9 +742,14 @@ class Launcher(tk.Tk):
         save_dir_label.bind("<Leave>", hide_save_tooltip)
 
         # Done button
+        def on_done():
+            # Ensure all settings are saved before closing
+            self._save_config()
+            win.destroy()
+        
         done_frame = tk.Frame(win, bg="#111827")
         done_frame.pack(fill="x", pady=(8, 10))
-        done_btn = tk.Button(done_frame, text="Done", command=win.destroy, bg="#10b981", fg="#03241b", padx=12, pady=6, relief="flat")
+        done_btn = tk.Button(done_frame, text="Done", command=on_done, bg="#10b981", fg="#03241b", padx=12, pady=6, relief="flat")
         done_btn.pack(side="right", padx=12)
 
 
