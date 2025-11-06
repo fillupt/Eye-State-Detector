@@ -125,5 +125,16 @@ desktop.ini
 *.whl
 *.tar.gz
 
+# Runtime files
+tracker.ready
+launcher_config.json
+_warmup_mediapipe.py
+
+# Questionnaire data (stored in subfolder to avoid affecting task order randomization)
+questionnaires/
+
+# Trivia results
+trivia/
+
 # If you intentionally keep a requirements file, keep it in repo instead of the venv
 # Add common dependency manifests instead of committing a virtualenv
