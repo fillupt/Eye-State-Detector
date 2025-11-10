@@ -3961,6 +3961,606 @@
         "1999"
       ],
       "correct": 2
+    },
+    {
+      "id": 331,
+      "question": "Who is known as the father of modern chemistry?",
+      "choices": [
+        "Isaac Newton",
+        "Antoine Lavoisier",
+        "Dmitri Mendeleev",
+        "Robert Boyle",
+        "Marie Curie"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 332,
+      "question": "Which river is the longest in Africa?",
+      "choices": [
+        "Congo River",
+        "Niger River",
+        "Nile River",
+        "Zambezi River",
+        "Orange River"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 333,
+      "question": "Who invented the first practical telephone?",
+      "choices": [
+        "Thomas Edison",
+        "Alexander Graham Bell",
+        "Nikola Tesla",
+        "Guglielmo Marconi",
+        "Michael Faraday"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 334,
+      "question": "Which scientist developed the theory of relativity?",
+      "choices": [
+        "Isaac Newton",
+        "Albert Einstein",
+        "Galileo Galilei",
+        "Stephen Hawking",
+        "Niels Bohr"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 335,
+      "question": "Which country is home to the ancient city of Petra?",
+      "choices": [
+        "Egypt",
+        "Jordan",
+        "Turkey",
+        "Greece",
+        "Iran"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 336,
+      "question": "Who discovered the law of gravity when an apple fell on his head?",
+      "choices": [
+        "Galileo Galilei",
+        "Isaac Newton",
+        "Johannes Kepler",
+        "James Clerk Maxwell",
+        "Michael Faraday"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 337,
+      "question": "Which continent is the Gobi Desert located on?",
+      "choices": [
+        "Africa",
+        "Asia",
+        "Australia",
+        "Europe",
+        "South America"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 338,
+      "question": "Who was the first person to propose that the Earth revolves around the Sun?",
+      "choices": [
+        "Ptolemy",
+        "Copernicus",
+        "Galileo",
+        "Kepler",
+        "Newton"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 339,
+      "question": "Which ocean is the largest by surface area?",
+      "choices": [
+        "Atlantic Ocean",
+        "Indian Ocean",
+        "Pacific Ocean",
+        "Arctic Ocean",
+        "Southern Ocean"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 340,
+      "question": "How many bones are in the adult human body?",
+      "choices": [
+        "186",
+        "196",
+        "206",
+        "216",
+        "226"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 341,
+      "question": "What is the smallest unit of life?",
+      "choices": [
+        "Atom",
+        "Molecule",
+        "Cell",
+        "Organ",
+        "Tissue"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 342,
+      "question": "What gas do plants absorb from the atmosphere during photosynthesis?",
+      "choices": [
+        "Oxygen",
+        "Nitrogen",
+        "Carbon dioxide",
+        "Hydrogen",
+        "Methane"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 343,
+      "question": "What is the chemical formula for table salt?",
+      "choices": [
+        "NaCl",
+        "KCl",
+        "CaCl2",
+        "MgCl2",
+        "H2O"
+      ],
+      "correct": 0
+    },
+    {
+      "id": 344,
+      "question": "What is the largest organ in the human body?",
+      "choices": [
+        "Liver",
+        "Brain",
+        "Skin",
+        "Heart",
+        "Lungs"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 345,
+      "question": "What particle in an atom has a negative charge?",
+      "choices": [
+        "Proton",
+        "Neutron",
+        "Electron",
+        "Photon",
+        "Quark"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 346,
+      "question": "What is the study of earthquakes called?",
+      "choices": [
+        "Meteorology",
+        "Volcanology",
+        "Seismology",
+        "Geology",
+        "Oceanography"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 347,
+      "question": "What vitamin is produced when skin is exposed to sunlight?",
+      "choices": [
+        "Vitamin A",
+        "Vitamin B12",
+        "Vitamin C",
+        "Vitamin D",
+        "Vitamin E"
+      ],
+      "correct": 3
+    },
+    {
+      "id": 348,
+      "question": "What is the center of an atom called?",
+      "choices": [
+        "Electron cloud",
+        "Orbital",
+        "Nucleus",
+        "Shell",
+        "Valence"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 349,
+      "question": "What type of rock is formed from cooled magma or lava?",
+      "choices": [
+        "Sedimentary",
+        "Metamorphic",
+        "Igneous",
+        "Limestone",
+        "Sandstone"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 350,
+      "question": "What is the process of liquid turning into gas called?",
+      "choices": [
+        "Condensation",
+        "Sublimation",
+        "Evaporation",
+        "Freezing",
+        "Melting"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 351,
+      "question": "What is the primary gas in the Sun?",
+      "choices": [
+        "Oxygen",
+        "Helium",
+        "Hydrogen",
+        "Carbon",
+        "Nitrogen"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 352,
+      "question": "What is the freezing point of water in Celsius?",
+      "choices": [
+        "-10°C",
+        "0°C",
+        "10°C",
+        "32°C",
+        "100°C"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 353,
+      "question": "What is the term for animals that eat both plants and meat?",
+      "choices": [
+        "Herbivores",
+        "Carnivores",
+        "Omnivores",
+        "Decomposers",
+        "Producers"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 354,
+      "question": "What part of the brain controls balance and coordination?",
+      "choices": [
+        "Cerebrum",
+        "Medulla",
+        "Cerebellum",
+        "Hypothalamus",
+        "Pons"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 355,
+      "question": "What is the chemical symbol for iron?",
+      "choices": [
+        "Ir",
+        "In",
+        "Fe",
+        "Fr",
+        "I"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 356,
+      "question": "What is the largest planet in our solar system?",
+      "choices": [
+        "Saturn",
+        "Neptune",
+        "Jupiter",
+        "Uranus",
+        "Earth"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 357,
+      "question": "What is the process by which DNA makes a copy of itself?",
+      "choices": [
+        "Transcription",
+        "Translation",
+        "Replication",
+        "Mutation",
+        "Mitosis"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 358,
+      "question": "What is the normal human body temperature in Celsius?",
+      "choices": [
+        "35°C",
+        "36°C",
+        "37°C",
+        "38°C",
+        "39°C"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 359,
+      "question": "What is the smallest bone in the human body?",
+      "choices": [
+        "Femur",
+        "Tibia",
+        "Stapes",
+        "Radius",
+        "Ulna"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 360,
+      "question": "What type of electromagnetic radiation has the longest wavelength?",
+      "choices": [
+        "Gamma rays",
+        "X-rays",
+        "Visible light",
+        "Microwaves",
+        "Radio waves"
+      ],
+      "correct": 4
+    },
+    {
+      "id": 361,
+      "question": "What is the study of living organisms called?",
+      "choices": [
+        "Geology",
+        "Biology",
+        "Chemistry",
+        "Physics",
+        "Astronomy"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 362,
+      "question": "What element has the atomic number 1?",
+      "choices": [
+        "Helium",
+        "Hydrogen",
+        "Lithium",
+        "Carbon",
+        "Oxygen"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 363,
+      "question": "What is the term for the change of state from solid directly to gas?",
+      "choices": [
+        "Evaporation",
+        "Condensation",
+        "Sublimation",
+        "Deposition",
+        "Melting"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 364,
+      "question": "What blood type is known as the universal donor?",
+      "choices": [
+        "A+",
+        "B+",
+        "AB+",
+        "O-",
+        "O+"
+      ],
+      "correct": 3
+    },
+    {
+      "id": 365,
+      "question": "What is the unit of electrical resistance?",
+      "choices": [
+        "Volt",
+        "Ampere",
+        "Ohm",
+        "Watt",
+        "Joule"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 366,
+      "question": "What is the closest star to Earth?",
+      "choices": [
+        "Alpha Centauri",
+        "Sirius",
+        "The Sun",
+        "Proxima Centauri",
+        "Betelgeuse"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 367,
+      "question": "What is the main component of natural gas?",
+      "choices": [
+        "Propane",
+        "Butane",
+        "Methane",
+        "Ethane",
+        "Pentane"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 368,
+      "question": "What organ produces insulin?",
+      "choices": [
+        "Liver",
+        "Kidney",
+        "Pancreas",
+        "Spleen",
+        "Gallbladder"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 369,
+      "question": "What is the SI unit of force?",
+      "choices": [
+        "Joule",
+        "Newton",
+        "Pascal",
+        "Watt",
+        "Kelvin"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 370,
+      "question": "What percentage of Earth's surface is covered by water?",
+      "choices": [
+        "50%",
+        "60%",
+        "71%",
+        "80%",
+        "90%"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 371,
+      "question": "What is the name of the galaxy that contains our solar system?",
+      "choices": [
+        "Andromeda",
+        "Milky Way",
+        "Whirlpool",
+        "Sombrero",
+        "Triangulum"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 372,
+      "question": "What gas is released during photosynthesis?",
+      "choices": [
+        "Carbon dioxide",
+        "Nitrogen",
+        "Oxygen",
+        "Hydrogen",
+        "Methane"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 373,
+      "question": "What is the chemical formula for water?",
+      "choices": [
+        "H2O",
+        "CO2",
+        "O2",
+        "H2SO4",
+        "NaCl"
+      ],
+      "correct": 0
+    },
+    {
+      "id": 374,
+      "question": "What is the largest type of blood vessel in the body?",
+      "choices": [
+        "Capillary",
+        "Vein",
+        "Artery",
+        "Arteriole",
+        "Venule"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 375,
+      "question": "What is the study of heredity and genes called?",
+      "choices": [
+        "Ecology",
+        "Genetics",
+        "Botany",
+        "Zoology",
+        "Anatomy"
+      ],
+      "correct": 1
+    },
+    {
+      "id": 376,
+      "question": "What is the boiling point of water at sea level in Celsius?",
+      "choices": [
+        "90°C",
+        "95°C",
+        "100°C",
+        "105°C",
+        "110°C"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 377,
+      "question": "What metal is liquid at room temperature?",
+      "choices": [
+        "Gold",
+        "Silver",
+        "Mercury",
+        "Lead",
+        "Aluminum"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 378,
+      "question": "What is the longest bone in the human body?",
+      "choices": [
+        "Humerus",
+        "Tibia",
+        "Femur",
+        "Fibula",
+        "Radius"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 379,
+      "question": "What phenomenon causes the sky to appear blue?",
+      "choices": [
+        "Reflection",
+        "Refraction",
+        "Rayleigh scattering",
+        "Diffraction",
+        "Absorption"
+      ],
+      "correct": 2
+    },
+    {
+      "id": 380,
+      "question": "What is the smallest planet in our solar system?",
+      "choices": [
+        "Mars",
+        "Mercury",
+        "Venus",
+        "Pluto",
+        "Neptune"
+      ],
+      "correct": 1
     }
   ]
 }

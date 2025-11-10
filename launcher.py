@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import tkinter as tk
 from tkinter import filedialog, font, messagebox
 
@@ -69,8 +70,8 @@ class Launcher(tk.Tk):
         self.preview_btn = tk.Button(btn_frame, text="Preview", command=self.toggle_preview, bg="#3b82f6", fg="#fff", padx=12, pady=8, relief="flat", font=label_font)
         self.preview_btn.pack(side="left", padx=4)
 
-        # Start button (run full experiment with sequential tasks)
-        self.start_btn = tk.Button(btn_frame, text="Start", command=self.start_experiment, bg="#10b981", fg="#03241b", padx=12, pady=8, relief="flat", font=label_font)
+        # Start button (run full experiment with sequential tasks) - disabled until preview is verified
+        self.start_btn = tk.Button(btn_frame, text="Start", command=self.start_experiment, bg="#6b7280", fg="#d1d5db", padx=12, pady=8, relief="flat", font=label_font, state="disabled")
         self.start_btn.pack(side="left", padx=4)
 
         # Setup button (opens settings window)
@@ -87,6 +88,7 @@ class Launcher(tk.Tk):
         self.save_dir = ""
         self.duration_minutes = 5  # Default 5 minutes
         self._needs_config_save = False  # Flag for deferred config save
+        self._preview_verified = False  # Track if preview has been successfully run
 
         # Load saved config (if any)
         self._load_config()
@@ -125,6 +127,25 @@ class Launcher(tk.Tk):
         x = (screen_w // 2) - (self.width // 2)
         y = (screen_h // 2) - (self.height // 2)
         self.geometry(f"{self.width}x{self.height}+{x}+{y}")
+    
+    def _send_tracker_command(self, command):
+        """Send a command to the eye tracker via command file."""
+        command_path = os.path.join(ROOT_DIR, "tracker.cmd")
+        try:
+            with open(command_path, "w") as f:
+                f.write(command)
+            print(f"[DEBUG] Sent command: {command}", file=sys.stderr)
+        except Exception as e:
+            print(f"[ERROR] Failed to send command: {e}", file=sys.stderr)
+    
+    def _generate_csv_filename(self, task_suffix):
+        """Generate CSV filename: YYYYMMDDTHHMM-{participant}-{order}-{task}.csv"""
+        from datetime import datetime
+        timestamp_str = datetime.now().strftime("%Y%m%dT%H%M")
+        name = self.name_var.get().strip()
+        name_suffix = f"-{name}" if name else ""
+        order_suffix = f"-{self.task_order_code}"
+        return f"{timestamp_str}{name_suffix}{order_suffix}-{task_suffix}.csv"
     
     def _calculate_task_order(self):
         """Count existing CSV files in save directory and return order number (0-5)."""
@@ -304,17 +325,31 @@ class Launcher(tk.Tk):
             return
         # If ready file exists, the tracker is running
         if os.path.exists(ready_path):
-            self.status_label.config(text=f"Status: Running (PID {self.process.pid})", fg="#86efac")
-            self.preview_btn.config(text="Stop", state="normal", bg="#ef4444", fg="#fff")
+            # Add a small delay to ensure window is actually visible
+            # Check if this is the first time we're detecting ready state
+            if not hasattr(self, '_ready_confirmed') or not self._ready_confirmed:
+                self._ready_confirmed = True
+                self._ready_timestamp = self.after(1500, self._confirm_running)
             # Continue polling to detect when process exits
             self.after(500, self._poll_ready)
         else:
             # Still initializing, keep polling
             self.after(500, self._poll_ready)
+    
+    def _confirm_running(self):
+        """Confirm tracker is running after delay to ensure window is visible."""
+        if self.process and self.process.poll() is None:
+            self.status_label.config(text=f"Status: Running (PID {self.process.pid})", fg="#86efac")
+            self.preview_btn.config(text="Stop", state="normal", bg="#ef4444", fg="#fff")
+            # Enable Start button now that preview has been verified
+            self._preview_verified = True
+            self.start_btn.config(state="normal", bg="#10b981", fg="#03241b")
 
     def toggle_preview(self):
         """Toggle preview mode - eye tracker with window for verification."""
         if self.process is None or (self.process.poll() is not None):
+            # Reset ready confirmation state
+            self._ready_confirmed = False
             # Save last name when starting
             try:
                 self.last_name = self.name_var.get().strip()
@@ -359,15 +394,34 @@ class Launcher(tk.Tk):
             name = self.name_var.get().strip()
             duration_seconds = self.duration_minutes * 60
             
-            # Start eye tracker in headless mode (will be implemented)
+            # Ensure eye tracker is running (start in headless mode if not already running)
             self.status_label.config(text="Status: Starting eye tracker...", fg="#fbbf24")
             self.update()
             
-            # TODO: Start headless eye tracker here
-            # For now, we'll just run the tasks
+            if self.process is None or self.process.poll() is not None:
+                # Start tracker in headless mode
+                python_exe = find_python_executable()
+                cmd = [python_exe, os.path.join(ROOT_DIR, "Eye_State_Detector.py"), "--headless"]
+                if name:
+                    cmd += ["--name", name]
+                if self.save_dir:
+                    cmd += ["--outdir", self.save_dir]
+                cmd += ["--order", self.task_order_code]
+                
+                try:
+                    self.process = subprocess.Popen(cmd, cwd=ROOT_DIR)
+                    print(f"[DEBUG] Started headless tracker (PID {self.process.pid})", file=sys.stderr)
+                    # Wait a moment for tracker to initialize
+                    time.sleep(2)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to start tracker: {e}")
+                    return
+            else:
+                # Tracker already running (from preview) - close window if open
+                self._send_tracker_command("CLOSE_WINDOW")
+                time.sleep(0.5)
             
             # Run each task in order
-            # Note: Questionnaires (SANDE/OSDI) are now part of Interactive task
             for i, task_name in enumerate(self.task_order, 1):
                 self.status_label.config(text=f"Status: Task {i}/3 - {task_name}", fg="#86efac")
                 self.update()
@@ -378,9 +432,12 @@ class Launcher(tk.Tk):
                     self._run_video_task(name, duration_seconds)
                 elif task_name == "Interactive":
                     self._run_interactive_task(name, duration_seconds)
-
             
-            # TODO: Stop eye tracker here
+            # Stop eye tracker
+            self._send_tracker_command("SHUTDOWN")
+            if self.process:
+                self.process.wait(timeout=3)
+                self.process = None
             
             self.status_label.config(text="Status: Experiment Complete!", fg="#86efac")
             messagebox.showinfo("Complete", "Experiment completed successfully!")
@@ -413,8 +470,17 @@ class Launcher(tk.Tk):
         if not self.task_reading:
             return
         
+        # Generate filename for this task
+        csv_filename = self._generate_csv_filename("R")
+        
+        # Start recording
+        self._send_tracker_command(f"START_RECORDING {csv_filename}")
+        
         # TODO: Implement reading task window
-        messagebox.showinfo("Reading Task", f"Reading task would run here for {duration_seconds}s\nFile: {self.task_reading}")
+        messagebox.showinfo("Reading Task", f"Reading task would run here for {duration_seconds}s\nFile: {self.task_reading}\n\nRecording to: {csv_filename}")
+        
+        # Stop recording
+        self._send_tracker_command("STOP_RECORDING")
     
     def _run_video_task(self, name, duration_seconds):
         """Run the video task."""
@@ -423,10 +489,13 @@ class Launcher(tk.Tk):
         
         from video_player import VideoPlayerWindow
         
+        # Generate filename for this task
+        csv_filename = self._generate_csv_filename("V")
+        
         def on_ready():
             """Called when video is loaded and ready"""
-            print(f"Video task ready - recording would start here")
-            # TODO: Send START_RECORDING command to eye tracker
+            print(f"[DEBUG] Video task ready - starting recording to {csv_filename}", file=sys.stderr)
+            self._send_tracker_command(f"START_RECORDING {csv_filename}")
         
         player = VideoPlayerWindow(
             self,
@@ -439,8 +508,9 @@ class Launcher(tk.Tk):
         )
         self.wait_window(player)
         
-        # TODO: Send STOP_RECORDING command to eye tracker
-        print(f"Video task completed")
+        # Stop recording
+        self._send_tracker_command("STOP_RECORDING")
+        print(f"[DEBUG] Video task completed - stopped recording", file=sys.stderr)
     
     def _run_interactive_task(self, name, duration_seconds):
         """Run the unified interactive task (SANDE + OSDI + Trivia MCQs)."""
@@ -449,10 +519,13 @@ class Launcher(tk.Tk):
         
         from questionnaires import InteractiveTaskWindow
         
+        # Generate filename for this task
+        csv_filename = self._generate_csv_filename("I")
+        
         def on_ready():
             """Called when interactive window is fully loaded"""
-            print(f"Interactive task ready - recording would start here")
-            # TODO: Send START_RECORDING command to eye tracker
+            print(f"[DEBUG] Interactive task ready - starting recording to {csv_filename}", file=sys.stderr)
+            self._send_tracker_command(f"START_RECORDING {csv_filename}")
         
         interactive = InteractiveTaskWindow(
             self,
@@ -467,8 +540,9 @@ class Launcher(tk.Tk):
         )
         self.wait_window(interactive)
         
-        # TODO: Send STOP_RECORDING command to eye tracker
-        print(f"Interactive task completed")
+        # Stop recording
+        self._send_tracker_command("STOP_RECORDING")
+        print(f"[DEBUG] Interactive task completed - stopped recording", file=sys.stderr)
 
 
     def on_close(self):

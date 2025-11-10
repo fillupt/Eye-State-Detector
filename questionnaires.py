@@ -41,13 +41,13 @@ class QuestionnaireWindow(tk.Toplevel):
         self.label_font = font.Font(family="Segoe UI", size=11)
         self.small_font = font.Font(family="Segoe UI", size=9)
         
-        # Size and center window - consistent 1200x700
-        self.geometry("1200x700")
+        # Size and center window - consistent 1400x800
+        self.geometry("1400x800")
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        x = (screen_w - 1200) // 2
-        y = (screen_h - 700) // 2
-        self.geometry(f"1200x700+{x}+{y}")
+        x = (screen_w - 1400) // 2
+        y = (screen_h - 800) // 2
+        self.geometry(f"1400x800+{x}+{y}")
         
         # Container for content that will be swapped
         self.content_container = tk.Frame(self, bg="#1f2937")
@@ -130,7 +130,7 @@ class QuestionnaireWindow(tk.Toplevel):
             fg="#03241b",
             font=self.label_font,
             padx=40,
-            pady=12,
+            pady=8,
             relief="flat"
         )
         submit_btn.pack()
@@ -612,13 +612,13 @@ class TriviaMCQWindow(tk.Toplevel):
         self.small_font = font.Font(family="Segoe UI", size=9)
         self.large_font = font.Font(family="Segoe UI", size=16, weight="bold")
         
-        # Size and center window
-        self.geometry("1200x700")
+        # Size and center window - 1400x800
+        self.geometry("1400x800")
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        x = (screen_w - 1200) // 2
-        y = (screen_h - 700) // 2
-        self.geometry(f"1200x700+{x}+{y}")
+        x = (screen_w - 1400) // 2
+        y = (screen_h - 800) // 2
+        self.geometry(f"1400x800+{x}+{y}")
         
         # Load questions
         self._load_questions()
@@ -638,7 +638,7 @@ class TriviaMCQWindow(tk.Toplevel):
         self.progress_label = tk.Label(
             self.progress_frame,
             text="Time remaining: 0:00",
-            bg="#374151",
+            bg="#10b981",
             fg="#ffffff",
             font=self.small_font
         )
@@ -713,7 +713,7 @@ class TriviaMCQWindow(tk.Toplevel):
             header_frame,
             text=f"Question {self.total_shown + 1}",
             bg="#1f2937",
-            fg="#fbbf24",
+            fg="#ffffff",
             font=self.label_font
         )
         question_num_label.pack(side="left", padx=(0, 20))
@@ -1109,13 +1109,13 @@ class InteractiveTaskWindow(tk.Toplevel):
         self.small_font = font.Font(family="Segoe UI", size=9)
         self.large_font = font.Font(family="Segoe UI", size=16, weight="bold")
         
-        # Size and center window - consistent 1200x700
-        self.geometry("1200x700")
+        # Size and center window - consistent 1400x800
+        self.geometry("1400x800")
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        x = (screen_w - 1200) // 2
-        y = (screen_h - 700) // 2
-        self.geometry(f"1200x700+{x}+{y}")
+        x = (screen_w - 1400) // 2
+        y = (screen_h - 800) // 2
+        self.geometry(f"1400x800+{x}+{y}")
         
         # Main content container (swappable)
         self.content_container = tk.Frame(self, bg="#1f2937")
@@ -1132,7 +1132,7 @@ class InteractiveTaskWindow(tk.Toplevel):
         self.progress_label = tk.Label(
             self.progress_frame,
             text="Time remaining: --:--",
-            bg="#374151",
+            bg="#10b981",
             fg="#ffffff",
             font=self.small_font
         )
@@ -1210,7 +1210,9 @@ class InteractiveTaskWindow(tk.Toplevel):
         self._add_sande_slider(
             content, 
             "frequency", 
-            "1. Frequency of symptoms:\nPlease mark on the line how often, on average, your eyes feel dry and/or irritated:",
+            question_number="1",
+            question_heading="Frequency of symptoms:",
+            question_detail="Please mark on the line how often, on average, your eyes feel dry and/or irritated:",
             left_label="Rarely",
             right_label="All the time"
         )
@@ -1218,7 +1220,9 @@ class InteractiveTaskWindow(tk.Toplevel):
         self._add_sande_slider(
             content, 
             "severity", 
-            "2. Severity of symptoms:\nPlease mark on the line how severe, on average, you feel your symptoms of dryness and/or irritation:",
+            question_number="2",
+            question_heading="Severity of symptoms:",
+            question_detail="Please mark on the line how severe, on average, you feel your symptoms of dryness and/or irritation:",
             left_label="Very Mild",
             right_label="Very Severe"
         )
@@ -1236,26 +1240,39 @@ class InteractiveTaskWindow(tk.Toplevel):
             relief="flat",
             cursor="hand2",
             padx=30,
-            pady=15
+            pady=8
         )
         next_btn.pack(pady=30)
     
-    def _add_sande_slider(self, parent, key, question_text, left_label="Rarely", right_label="All the time"):
+    def _add_sande_slider(self, parent, key, question_number, question_heading, question_detail, left_label="Rarely", right_label="All the time"):
         """Add a SANDE slider question with horizontal layout and drag support"""
         question_frame = tk.Frame(parent, bg="#1f2937")
         question_frame.pack(pady=20, padx=40, fill="x")
         
-        # Question label (full width, above slider)
-        label = tk.Label(
+        # Question heading (bold) with number
+        heading_font = font.Font(family="Segoe UI", size=11, weight="bold")
+        heading_label = tk.Label(
             question_frame,
-            text=question_text,
+            text=f"{question_number}. {question_heading}",
             bg="#1f2937",
             fg="#ffffff",
+            font=heading_font,
+            anchor="w",
+            justify="left"
+        )
+        heading_label.pack(fill="x", pady=(0, 5))
+        
+        # Question detail (regular font)
+        detail_label = tk.Label(
+            question_frame,
+            text=question_detail,
+            bg="#1f2937",
+            fg="#cbd5e1",
             font=self.label_font,
             anchor="w",
             justify="left"
         )
-        label.pack(fill="x", pady=(0, 15))
+        detail_label.pack(fill="x", pady=(0, 15))
         
         # Slider container
         slider_container = tk.Frame(question_frame, bg="#1f2937")
@@ -1335,7 +1352,7 @@ class InteractiveTaskWindow(tk.Toplevel):
                 )
                 
                 # Update value label
-                value_label.config(text=f"Selected: {value}/100", fg="#10b981")
+                value_label.config(text=f"{value}/100", fg="#10b981")
         
         def on_click(event):
             """Handle click on canvas"""
@@ -1448,18 +1465,20 @@ class InteractiveTaskWindow(tk.Toplevel):
             relief="flat",
             cursor="hand2",
             padx=30,
-            pady=15
+            pady=8
         )
         submit_btn.pack(pady=20)
     
     def _add_osdi_section_header(self, parent, header_text):
         """Add a section header for OSDI questions"""
+        # Create bold font for section headers
+        header_font = font.Font(family="Segoe UI", size=11, weight="bold")
         header = tk.Label(
             parent,
             text=header_text,
             bg="#1f2937",
-            fg="#cbd5e1",
-            font=self.small_font,
+            fg="#ffffff",  # Changed to white like SANDE headings
+            font=header_font,  # Now bold
             wraplength=1000,
             justify="left"
         )
@@ -1600,14 +1619,14 @@ class InteractiveTaskWindow(tk.Toplevel):
         content = tk.Frame(container, bg="#1f2937")
         content.pack(expand=True)
         
-        # Progress indicator
-        progress_text = f"Question {self.current_question_index + 1} of {len(self.questions)}"
+        # Progress indicator (just question number, not total) - large white text
+        progress_text = f"Question {self.current_question_index + 1}"
         progress_label = tk.Label(
             content,
             text=progress_text,
-            bg="#1f2937",
-            fg="#94a3b8",
-            font=self.small_font
+            bg="#1f2937",  # Same as background (no visible background)
+            fg="#ffffff",  # White text
+            font=self.title_font  # Larger font (size 14, bold)
         )
         progress_label.pack(pady=(20, 10))
         
@@ -1638,8 +1657,23 @@ class InteractiveTaskWindow(tk.Toplevel):
         # Store question start time
         question_start_time = time.time()
         
-        def make_choice_handler(choice):
+        # Store button references for feedback
+        choice_buttons = []
+        
+        def make_choice_handler(choice, button, is_correct_choice):
             def handler():
+                # Disable all buttons to prevent multiple clicks
+                for btn in choice_buttons:
+                    btn.config(state="disabled")
+                
+                # Show visual feedback
+                if is_correct_choice:
+                    # Flash green for correct answer
+                    button.config(bg="#10b981", fg="#ffffff")
+                else:
+                    # Flash red for incorrect answer
+                    button.config(bg="#ef4444", fg="#ffffff")
+                
                 # Record response
                 is_correct = (choice == correct_answer)
                 response_time = time.time() - question_start_time
@@ -1658,18 +1692,18 @@ class InteractiveTaskWindow(tk.Toplevel):
                 
                 self.total_shown += 1
                 
-                # Move to next question
+                # Move to next question after brief delay 150ms)
                 self.current_question_index += 1
-                self._show_question()
+                self.after(150, self._show_question)
             
             return handler
         
         # Create choice buttons (large, touch-friendly)
         for i, choice in enumerate(choices):
+            is_correct_choice = (choice == correct_answer)
             btn = tk.Button(
                 choices_frame,
-                text=f"{chr(65 + i)}. {choice}",
-                command=make_choice_handler(choice),
+                text=choice,  # Removed f"{chr(65 + i)}. " prefix
                 font=self.label_font,
                 bg="#374151",
                 fg="#ffffff",
@@ -1682,7 +1716,9 @@ class InteractiveTaskWindow(tk.Toplevel):
                 width=60,
                 anchor="w"
             )
+            btn.config(command=make_choice_handler(choice, btn, is_correct_choice))
             btn.pack(pady=8)
+            choice_buttons.append(btn)
     
     def _show_completion(self):
         """Complete the task and close window immediately"""
@@ -1779,7 +1815,7 @@ class InteractiveTaskWindow(tk.Toplevel):
         """Handle window close attempt"""
         response = messagebox.askyesno(
             "Exit Task?",
-            "Are you sure you want to exit the interactive task?\n\nYour progress will be saved.",
+            "Are you sure you want to exit?",
             parent=self
         )
         

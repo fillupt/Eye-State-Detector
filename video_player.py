@@ -49,13 +49,13 @@ class VideoPlayerWindow(tk.Toplevel):
         # Fonts
         self.label_font = font.Font(family="Segoe UI", size=11)
         
-        # Size and position - use 1200x700 for consistency
-        self.geometry("1200x700")
+        # Size and position - use 1400x800 for consistency
+        self.geometry("1400x800")
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        x = (screen_w - 1200) // 2
-        y = (screen_h - 700) // 2
-        self.geometry(f"1200x700+{x}+{y}")
+        x = (screen_w - 1400) // 2
+        y = (screen_h - 800) // 2
+        self.geometry(f"1400x800+{x}+{y}")
         
         # Main container
         main_frame = tk.Frame(self, bg="#000000")
@@ -91,7 +91,7 @@ class VideoPlayerWindow(tk.Toplevel):
             fg="#03241b",
             font=self.label_font,
             padx=20,
-            pady=8,
+            pady=6,
             relief="flat"
         )
         self.play_pause_btn.pack(side="left", padx=5)
@@ -104,7 +104,7 @@ class VideoPlayerWindow(tk.Toplevel):
             fg="#ffffff",
             font=self.label_font,
             padx=20,
-            pady=8,
+            pady=6,
             relief="flat"
         )
         self.stop_btn.pack(side="left", padx=5)

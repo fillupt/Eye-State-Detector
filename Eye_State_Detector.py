@@ -51,11 +51,13 @@ EAR_THRESHOLD = 0.25
 parser = argparse.ArgumentParser(add_help=False)
 parser.add_argument("--name", type=str, default="", help="Optional user name to display on-screen")
 parser.add_argument("--outdir", type=str, default="", help="Directory to save CSV output file")
-parser.add_argument("--order", type=str, default="", help="Task order number (0-5) for filename")
+parser.add_argument("--order", type=str, default="", help="Task order code for filename")
+parser.add_argument("--headless", action="store_true", help="Run without window (background mode)")
 args, _ = parser.parse_known_args()
 USER_NAME = args.name
 OUTDIR = args.outdir if args.outdir else os.path.dirname(__file__)
 TASK_ORDER = args.order
+HEADLESS = args.headless
 
 # Start webcam
 cap = cv2.VideoCapture(0)
@@ -63,39 +65,99 @@ cap = cv2.VideoCapture(0)
 # Ready file used by launcher to detect when the tracker is initialized
 READY_PATH = os.path.join(os.path.dirname(__file__), "tracker.ready")
 
+# Command file for controlling the tracker
+COMMAND_PATH = os.path.join(os.path.dirname(__file__), "tracker.cmd")
+
 # Flag for writing ready file once initialization completes
 ready_written = False
 
-# Simple stop-button state and rectangle (updated each frame)
-STOP_FLAG = False
-btn_rect = [0, 0, 0, 0]  # x1, y1, x2, y2
-btn_w, btn_h = 100, 36
+# Create window only if not in headless mode
+window_closed = False
+if not HEADLESS:
+    cv2.namedWindow("Eye State Detection", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Eye State Detection", 640, 480)
 
-def _on_mouse(event, x, y, flags, param):
-    """Mouse callback to stop the loop when the on-screen button is clicked."""
-    global STOP_FLAG, btn_rect
-    if event == cv2.EVENT_LBUTTONDOWN:
-        x1, y1, x2, y2 = btn_rect
-        if x1 <= x <= x2 and y1 <= y <= y2:
-            STOP_FLAG = True
+# Variables to track eye state
+left_eye_status = "Unknown"
+right_eye_status = "Unknown"
 
-# Create a named window and attach mouse callback so button clicks work
-cv2.namedWindow("Eye State Detection")
-cv2.setMouseCallback("Eye State Detection", _on_mouse)
-
-# Variables to track eye closure duration
-eye_closed_start = None
-last_closed_duration = 0
-last_display_time = 0
-
-# Data recording: list of frame data rows
+# Data recording: list of frame data rows and recording state
 recorded_data = []
+recording = False
+current_csv_filename = None
 
 # Stabilization: track previous crop region to reduce jitter
 prev_crop = None
 
+def process_commands():
+    """Check for and process commands from the launcher."""
+    global recording, recorded_data, current_csv_filename, window_closed
+    
+    if not os.path.exists(COMMAND_PATH):
+        return True  # Continue running
+    
+    try:
+        with open(COMMAND_PATH, "r") as f:
+            command = f.read().strip()
+        
+        # Remove command file after reading
+        os.remove(COMMAND_PATH)
+        
+        if command.startswith("START_RECORDING "):
+            # Format: START_RECORDING <filename>
+            filename = command[16:].strip()
+            if not recording:
+                recorded_data = []  # Clear previous data
+                current_csv_filename = filename
+                recording = True
+                print(f"Started recording to: {filename}")
+        
+        elif command == "STOP_RECORDING":
+            if recording:
+                save_csv_data()
+                recording = False
+                print(f"Stopped recording, saved {len(recorded_data)} frames")
+                recorded_data = []
+                current_csv_filename = None
+        
+        elif command == "CLOSE_WINDOW":
+            if not window_closed and not HEADLESS:
+                window_closed = True
+                cv2.destroyAllWindows()
+                print("Window closed by command - continuing in background...")
+        
+        elif command == "SHUTDOWN":
+            print("Shutdown command received")
+            return False  # Stop running
+        
+    except Exception as e:
+        print(f"Error processing command: {e}", file=sys.stderr)
+    
+    return True  # Continue running
+
+def save_csv_data():
+    """Save the current recorded data to CSV."""
+    if not recorded_data or not current_csv_filename:
+        return
+    
+    try:
+        csv_path = os.path.join(OUTDIR, current_csv_filename)
+        with open(csv_path, "w", encoding="utf-8") as csvf:
+            # Write header
+            csvf.write("timestamp,left_ear,right_ear,LE_temporal,LE_nasal,RE_temporal,RE_nasal,LE_width,RE_width\n")
+            # Write data rows
+            for row in recorded_data:
+                csvf.write(",".join(map(str, row)) + "\n")
+        print(f"Saved {len(recorded_data)} frames to: {csv_path}")
+    except Exception as e:
+        print(f"Failed to save CSV: {e}", file=sys.stderr)
+
 try:
     while True:
+        # Process commands from launcher
+        if not process_commands():
+            break  # Shutdown command received
+        
         ret, frame = cap.read()
         if not ret:
             break
@@ -229,90 +291,71 @@ try:
                 re_nasal_vert = np.linalg.norm(np.array(landmarks[RIGHT_EYE[2]]) - np.array(landmarks[RIGHT_EYE[4]]))
                 re_width = np.linalg.norm(np.array(landmarks[RIGHT_EYE[0]]) - np.array(landmarks[RIGHT_EYE[3]]))
 
-                # Record row: timestamp, left_ear, right_ear, LE_temporal, LE_nasal, RE_temporal, RE_nasal, LE_width, RE_width
-                recorded_data.append([
-                    time.time(),
-                    left_ear,
-                    right_ear,
-                    le_temp_vert,
-                    le_nasal_vert,
-                    re_temp_vert,
-                    re_nasal_vert,
-                    le_width,
-                    re_width
-                ])
+                # Record row only if recording is active
+                if recording:
+                    recorded_data.append([
+                        time.time(),
+                        left_ear,
+                        right_ear,
+                        le_temp_vert,
+                        le_nasal_vert,
+                        re_temp_vert,
+                        re_nasal_vert,
+                        le_width,
+                        re_width
+                    ])
 
-                if avg_ear < EAR_THRESHOLD:
-                    if eye_closed_start is None:
-                        eye_closed_start = time.time()
-                    status = "Eyes Closed"
-                    color = (0, 0, 255)
+                # Determine eye states for color coding
+                if left_ear < EAR_THRESHOLD:
+                    left_eye_status = "Closed"
+                    left_color = (0, 0, 255)  # Red
                 else:
-                    if eye_closed_start is not None:
-                        last_closed_duration = time.time() - eye_closed_start
-                        last_display_time = time.time()
-                        eye_closed_start = None
-                    status = "Eyes Open"
-                    color = (0, 255, 0)
+                    left_eye_status = "Open"
+                    left_color = (0, 255, 0)  # Green
+                
+                if right_ear < EAR_THRESHOLD:
+                    right_eye_status = "Closed"
+                    right_color = (0, 0, 255)  # Red
+                else:
+                    right_eye_status = "Open"
+                    right_color = (0, 255, 0)  # Green
 
-                cv2.putText(frame, status, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-                # Show user name if provided
-                if USER_NAME:
-                    cv2.putText(frame, f"User: {USER_NAME}", (30, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
+                # Draw eyes with color coding (no text overlay)
+                draw_eye(frame, LEFT_EYE, landmarks, color=left_color)
+                draw_eye(frame, RIGHT_EYE, landmarks, color=right_color)
 
-                # Show duration message for 3 seconds
-                if time.time() - last_display_time < 3 and last_closed_duration > 0:
-                    msg = f"Eyes were closed for {last_closed_duration:.2f} sec"
-                    cv2.putText(frame, msg, (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-
-                draw_eye(frame, LEFT_EYE, landmarks)
-                draw_eye(frame, RIGHT_EYE, landmarks)
-
-        # Draw the stop button at top-right (so it's visible and clickable)
-        x2 = w - 10
-        x1 = x2 - btn_w
-        y1 = 10
-        y2 = y1 + btn_h
-        btn_rect[0], btn_rect[1], btn_rect[2], btn_rect[3] = x1, y1, x2, y2
-
-        # Draw button (semi-transparent effect by overlay)
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 0, 255), -1)
-        alpha = 0.6
-        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
-        cv2.putText(frame, "Stop", (x1 + 12, y1 + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-
-        # Show frame and handle keypresses; ESC to exit
-        cv2.imshow("Eye State Detection", frame)
-        key = cv2.waitKey(1) & 0xFF
-        if key == 27 or STOP_FLAG:
-            break
+        # Show frame only if not in headless mode and window hasn't been closed
+        if not HEADLESS and not window_closed:
+            cv2.imshow("Eye State Detection", frame)
+            key = cv2.waitKey(1) & 0xFF
+            # Check if window is closed (user clicked X) - switch to headless mode
+            if cv2.getWindowProperty("Eye State Detection", cv2.WND_PROP_VISIBLE) < 1:
+                window_closed = True
+                cv2.destroyAllWindows()
+                print("Window closed - continuing tracking in background...")
+            # Exit completely on ESC key
+            elif key == 27:
+                break
+        elif HEADLESS or window_closed:
+            # In headless mode, just wait a bit to avoid busy loop
+            time.sleep(0.01)
 finally:
-    # Save recorded data to CSV if any data was captured
-    if recorded_data:
-        try:
-            from datetime import datetime
-            timestamp_str = datetime.now().strftime("%Y%m%dT%H%M")
-            user_suffix = f"-{USER_NAME}" if USER_NAME else ""
-            order_suffix = f"-{TASK_ORDER}" if TASK_ORDER else ""
-            csv_filename = f"{timestamp_str}{user_suffix}{order_suffix}.csv"
-            csv_path = os.path.join(OUTDIR, csv_filename)
-            
-            with open(csv_path, "w", encoding="utf-8") as csvf:
-                # Write header
-                csvf.write("timestamp,left_ear,right_ear,LE_temporal,LE_nasal,RE_temporal,RE_nasal,LE_width,RE_width\n")
-                # Write data rows
-                for row in recorded_data:
-                    csvf.write(",".join(map(str, row)) + "\n")
-            print(f"Data saved to: {csv_path}")
-        except Exception as e:
-            print(f"Failed to save CSV: {e}", file=sys.stderr)
-
-    # Cleanup: remove ready file if created
+    # If still recording, save the current data
+    if recording and recorded_data:
+        save_csv_data()
+    
+    # Cleanup: remove ready and command files if they exist
     try:
         if ready_written and os.path.exists(READY_PATH):
             os.remove(READY_PATH)
     except Exception:
         pass
+    
+    try:
+        if os.path.exists(COMMAND_PATH):
+            os.remove(COMMAND_PATH)
+    except Exception:
+        pass
+    
     cap.release()
     cv2.destroyAllWindows()
