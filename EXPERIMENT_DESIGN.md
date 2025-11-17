@@ -4,39 +4,27 @@
 
 This project is designed to study blinking behavior patterns during different cognitive tasks to understand how visual and cognitive load affects eye state and blink frequency.
 
-## Experimental Hypothesis
+Each participant completes **three tasks** in a **randomized order**, balanced across all participants:
 
-Blinking patterns may vary significantly depending on the type of task being performed:
-- **Reading tasks** may show different blink patterns due to eye movement and text tracking
-- **Video viewing** may reduce blink frequency due to passive attention
-- **Interactive tasks** (questionnaires) may show increased blink rates due to active cognitive processing
-
-## Participant Protocol
-
-### Session Structure
-
-Each participant completes **three tasks** in a **randomized order**:
+Each task is of the same (configurable) duration.
 
 1. **Reading Task**
-   - Participant reads text material (file selected by experimenter)
-   - Duration: Configurable (1-15 minutes, default 5 minutes)
+   - Participant reads text material 
    - Data collected: Continuous eye tracking throughout reading
 
 2. **Video Task**
    - Participant watches a video (file selected by experimenter)
-   - Duration: Configurable (1-15 minutes, default 5 minutes)
    - Data collected: Continuous eye tracking during video viewing
 
 3. **Interactive Task**
    - Participant completes activities selected by experimenter:
      - **SANDE** (Symptom Assessment in Dry Eye) - 2 visual analog scales (frequency and severity)
-     - **OSDI-6** (Ocular Surface Disease Index - 6 item version) - Official questionnaire with proper response options
+     - **OSDI-6** (Ocular Surface Disease Index - 6 item version) 
      - **Trivia MCQ** - Multiple choice questions from JSON file (default: 330 questions from `trivia_general_knowledge.json`)
        - Questions presented one at a time
        - 5 answer choices (shuffled to prevent position bias)
        - Countdown timer and score tracking
        - Continues until time expires
-   - Duration: Configurable (1-15 minutes, default 5 minutes)
    - Data collected: 
      - Continuous eye tracking while completing tasks
      - Questionnaire responses saved to `questionnaires/` subfolder
@@ -48,18 +36,9 @@ To control for **order effects**, the task sequence is automatically assigned ba
 
 - Task order = `(file_count % 6)` ensures balanced distribution across 6 possible permutations
 - Order is encoded as three-letter code (e.g., **RVI** = Reading → Video → Interactive)
-- Participant sees only the code (**blinded**), not the full task names
-- Experimenter can decode using the Letter Code Mapping (see README.md)
 
-### Blinding Strategy
 
-- **Participant**: Sees only "Task Order: RVI" without explanation
-- **Experimenter**: Has access to decoder table showing RVI = Reading → Video → Interactive
-- **Purpose**: Prevents participant bias about expected difficulty or cognitive load
-
-## Data Collection
-
-### Recorded Measurements
+## Recorded Measurements
 
 For each video frame (typically 30 FPS), the system captures:
 
@@ -244,11 +223,6 @@ OSDI6,q6,3
 7. **Automated analysis scripts** - Calculate summary statistics from CSVs
 8. **Custom trivia categories** - Allow filtering by topic/difficulty
 
-### Research Extensions
-1. **Additional tasks** - Gaming, conversation, meditation
-2. **Environmental variables** - Lighting, screen brightness, distance
-3. **Longer sessions** - Multi-hour recordings with breaks
-4. **Paired studies** - Before/after interventions (eye drops, rest, etc.)
 
 ## References
 
@@ -264,8 +238,8 @@ OSDI6,q6,3
 
 ---
 
-**Document Version**: 1.1  
-**Last Updated**: November 6, 2025  
-**Author**: Research Team  
+**Document Version**: 1.0 
+**Last Updated**: 18 November 2025  
+**Author**: Dr Philip Turnbull
 **Status**: Active Experiment  
 **Recent Changes**: Added video player, questionnaires (SANDE/OSDI-6), and trivia MCQ components
