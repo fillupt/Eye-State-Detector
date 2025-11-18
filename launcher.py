@@ -79,7 +79,7 @@ class Launcher(tk.Tk):
         setup_btn.pack(side="left", padx=4)
 
         # Ensure task/file attributes exist
-        self.task_reading = ""
+        self.task_reading = "https://read.gov/aesop/002.html"  # Default to Aesop's Fables
         self.task_video = ""
         self.task_interactive = ""
         self.sande = False
@@ -469,18 +469,23 @@ class Launcher(tk.Tk):
         """Run the reading task."""
         if not self.task_reading:
             return
-        
         # Generate filename for this task
         csv_filename = self._generate_csv_filename("R")
-        
         # Start recording
         self._send_tracker_command(f"START_RECORDING {csv_filename}")
-        
-        # TODO: Implement reading task window
-        messagebox.showinfo("Reading Task", f"Reading task would run here for {duration_seconds}s\nFile: {self.task_reading}\n\nRecording to: {csv_filename}")
-        
-        # Stop recording
-        self._send_tracker_command("STOP_RECORDING")
+        # Import and launch reading window
+        try:
+            from reading_window import show_reading_window
+            def on_ready():
+                print(f"[DEBUG] Reading task ready - recording to {csv_filename}", file=sys.stderr)
+            show_reading_window(self.task_reading, on_ready_callback=on_ready)
+            # Wait for the duration of the reading task
+            self.after(duration_seconds * 1000, lambda: self._send_tracker_command("STOP_RECORDING"))
+            # Optionally, show a message when done
+            self.after(duration_seconds * 1000 + 500, lambda: messagebox.showinfo("Reading Task", "Reading task complete!"))
+        except Exception as e:
+            messagebox.showerror("Reading Task", f"Failed to launch reading window: {e}")
+            self._send_tracker_command("STOP_RECORDING")
     
     def _run_video_task(self, name, duration_seconds):
         """Run the video task."""
@@ -677,7 +682,11 @@ class Launcher(tk.Tk):
         def set_reading(path=None, get=False):
             if get:
                 return self.task_reading
-            self.task_reading = path or ""
+            # If path looks like a URL, treat as URL
+            if path and (path.startswith("http://") or path.startswith("https://")):
+                self.task_reading = path
+            else:
+                self.task_reading = path or ""
             self._save_config()
 
         def set_video(path=None, get=False):
@@ -694,7 +703,11 @@ class Launcher(tk.Tk):
 
         # Create task mapping for reordering based on task_order
         task_map = {
-            "Reading": ("Reading task", set_reading, None),
+            "Reading": ("Reading task (URL or file)", set_reading, [
+                ("Webpage URL", "*.url"),
+                ("Text files", "*.txt *.pdf"),
+                ("All files", "*.*")
+            ]),
             "Video": ("Video task", set_video, [
                 ("Video files", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm *.m4v *.mpeg *.mpg"),
                 ("All files", "*.*")
