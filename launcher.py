@@ -469,23 +469,30 @@ class Launcher(tk.Tk):
         """Run the reading task."""
         if not self.task_reading:
             return
+        
+        from reading_window import show_reading_window
+        
         # Generate filename for this task
         csv_filename = self._generate_csv_filename("R")
-        # Start recording
-        self._send_tracker_command(f"START_RECORDING {csv_filename}")
-        # Import and launch reading window
+        
+        def on_ready():
+            """Called when reading window is loaded and ready"""
+            print(f"[DEBUG] Reading task ready - starting recording to {csv_filename}", file=sys.stderr)
+            self._send_tracker_command(f"START_RECORDING {csv_filename}")
+        
         try:
-            from reading_window import show_reading_window
-            def on_ready():
-                print(f"[DEBUG] Reading task ready - recording to {csv_filename}", file=sys.stderr)
-            show_reading_window(self.task_reading, on_ready_callback=on_ready)
-            # Wait for the duration of the reading task
-            self.after(duration_seconds * 1000, lambda: self._send_tracker_command("STOP_RECORDING"))
-            # Optionally, show a message when done
-            self.after(duration_seconds * 1000 + 500, lambda: messagebox.showinfo("Reading Task", "Reading task complete!"))
+            # Launch reading window - this will block until window closes
+            show_reading_window(
+                self.task_reading,
+                on_ready_callback=on_ready,
+                duration_seconds=duration_seconds
+            )
         except Exception as e:
             messagebox.showerror("Reading Task", f"Failed to launch reading window: {e}")
+        finally:
+            # Stop recording
             self._send_tracker_command("STOP_RECORDING")
+            print(f"[DEBUG] Reading task completed - stopped recording", file=sys.stderr)
     
     def _run_video_task(self, name, duration_seconds):
         """Run the video task."""

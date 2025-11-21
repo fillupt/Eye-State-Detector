@@ -44,10 +44,12 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300):
     webview_top = int((scaled_screen_height - height) / 2)
     
     # Timer bar positioned directly below webview
-    timer_left = webview_left
-    timer_top = webview_top + height
+    # Timer uses physical coordinates (tkinter uses physical pixels on DPI-aware systems)
+    timer_left = int(webview_left * scale_factor)
+    timer_top = int((webview_top + height) * scale_factor) - 80
+    timer_width = int(width * scale_factor)-30  # Adjust for window borders
     
-    print(f'Screen: {scaled_screen_width}x{scaled_screen_height} (scaled), Webview: ({webview_left},{webview_top}), Timer: ({timer_left},{timer_top})')
+    print(f'Screen: {scaled_screen_width}x{scaled_screen_height} (scaled), Webview: ({webview_left},{webview_top}), Timer: ({timer_left},{timer_top}) width={timer_width}')
 
     # Shared state for timer and webview
     webview_window = None
@@ -57,7 +59,7 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300):
     def update_timer_position():
         """Update timer bar position to stay below webview"""
         if timer_root and timer_root.winfo_exists():
-            timer_root.geometry(f'{width}x{bar_height}+{timer_left}+{timer_top}')
+            timer_root.geometry(f'{timer_width}x{bar_height}+{timer_left}+{timer_top}')
             timer_root.lift()
             timer_root.attributes('-topmost', True)
 
@@ -69,7 +71,7 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300):
         timer_root.configure(bg='#374151')
         
         # Set initial geometry immediately
-        timer_root.geometry(f'{width}x{bar_height}+{timer_left}+{timer_top}')
+        timer_root.geometry(f'{timer_width}x{bar_height}+{timer_left}+{timer_top}')
         timer_root.attributes('-topmost', True)
 
         progress_frame = tk.Frame(timer_root, bg='#374151', height=bar_height)
@@ -91,7 +93,7 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300):
         start_time = time.time()
         def update_timer():
             elapsed = time.time() - start_time
-            remaining = max(0, duration_seconds - int(elapsed))
+            remaining = max(0, duration_seconds - elapsed)
             ratio = remaining / duration_seconds if duration_seconds > 0 else 0
             progress_bar.place(x=0, y=0, relwidth=ratio, relheight=1.0)
             mins = int(remaining // 60)
@@ -108,7 +110,7 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300):
                 if webview_window:
                     webview_window.destroy()
             else:
-                timer_root.after(1000, update_timer)
+                timer_root.after(50, update_timer)
         update_timer()
         timer_root.mainloop()
 
@@ -141,7 +143,7 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300):
         try:
             webview_window.evaluate_js('''
                 // Set zoom level to 85%
-                document.body.style.zoom = "85%";
+                document.body.style.zoom = "80%";
                 
                 // Remove the header, logo, and about divs
                 var header = document.getElementById("header");

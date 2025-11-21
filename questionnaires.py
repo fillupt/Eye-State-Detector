@@ -896,7 +896,7 @@ class TriviaMCQWindow(tk.Toplevel):
             self._show_completion()
             return
         
-        # Schedule next update
+        # Schedule next update (smooth animation)
         self.after(100, self._update_timer)
     
     def _show_completion(self):
@@ -1803,8 +1803,8 @@ class InteractiveTaskWindow(tk.Toplevel):
             self._show_completion()
             return
         
-        # Schedule next update
-        self.after(1000, self._update_timer)
+        # Schedule next update (smooth animation)
+        self.after(100, self._update_timer)
     
     def _complete_and_close(self):
         """Mark as completed and close window"""
