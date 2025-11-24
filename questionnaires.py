@@ -1099,6 +1099,10 @@ class InteractiveTaskWindow(tk.Toplevel):
             'osdi': {},
             'trivia': []
         }
+
+        # Per-question relative timestamps (milliseconds since interactive start)
+        self.sande_time = {}
+        self.osdi_time = {}
         
         self.title("Interactive Task")
         self.configure(bg="#1f2937")
@@ -1332,6 +1336,9 @@ class InteractiveTaskWindow(tk.Toplevel):
                 value = max(0, min(100, value))  # Clamp to 0-100
                 
                 self.sande_responses[key] = value
+                # Record timestamp (ms since task start)
+                if self.start_time:
+                    self.sande_time[key] = int((time.time() - self.start_time) * 1000)
                 
                 # Update visual feedback
                 canvas.delete("all")
@@ -1545,6 +1552,8 @@ class InteractiveTaskWindow(tk.Toplevel):
     def _select_osdi_option(self, key, value):
         """Handle OSDI option selection with visual feedback"""
         self.osdi_responses[key] = value
+        if self.start_time:
+            self.osdi_time[key] = int((time.time() - self.start_time) * 1000)
         
         # Update button styles - now using dict mapping
         for btn_value, btn in self.osdi_buttons[key].items():
@@ -1674,17 +1683,19 @@ class InteractiveTaskWindow(tk.Toplevel):
                     # Flash red for incorrect answer
                     button.config(bg="#ef4444", fg="#ffffff")
                 
-                # Record response
+                # Record response with GLOBAL elapsed ms (continuous increasing)
                 is_correct = (choice == correct_answer)
-                response_time = time.time() - question_start_time
-                
+                elapsed_ms = 0
+                if self.start_time:
+                    elapsed_ms = int((time.time() - self.start_time) * 1000)
+
                 self.trivia_responses.append({
                     'question_number': self.current_question_index + 1,
                     'question': question_data['question'],
                     'selected_answer': choice,
                     'correct_answer': correct_answer,
                     'is_correct': is_correct,
-                    'response_time': response_time
+                    'elapsed_ms': elapsed_ms
                 })
                 
                 if is_correct:
@@ -1744,31 +1755,30 @@ class InteractiveTaskWindow(tk.Toplevel):
         
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
-                # Header
-                f.write("section,question,response,value,timestamp\n")
-                
-                # SANDE responses
+                # Header (timestamp now = milliseconds since interactive task start)
+                f.write("section,question,response,value,timestamp_ms\n")
+
+                # SANDE responses (use recorded ms or fallback to end time)
                 if self.all_responses['sande']:
                     for key, value in self.all_responses['sande'].items():
-                        f.write(f"SANDE,{key},{value},{value},{timestamp}\n")
-                
+                        t_ms = self.sande_time.get(key, int((time.time() - self.start_time) * 1000) if self.start_time else 0)
+                        f.write(f"SANDE,{key},{value},{value},{t_ms}\n")
+
                 # OSDI responses with correct labels
                 if self.all_responses['osdi']:
                     osdi_labels = ["None of the time", "Some of the time", "Half of the time", "Most of the time", "All of the time"]
                     for key, value in self.all_responses['osdi'].items():
                         option_text = osdi_labels[value]
-                        f.write(f"OSDI,{key},{option_text},{value},{timestamp}\n")
-                
-                # Trivia responses
+                        t_ms = self.osdi_time.get(key, int((time.time() - self.start_time) * 1000) if self.start_time else 0)
+                        f.write(f"OSDI,{key},{option_text},{value},{t_ms}\n")
+
+                # Trivia responses (elapsed_ms already stored)
                 for response in self.trivia_responses:
                     q_num = response['question_number']
-                    question = response['question'].replace(',', ';')  # Escape commas
                     selected = response['selected_answer'].replace(',', ';')
-                    correct = response['correct_answer'].replace(',', ';')
                     is_correct = 1 if response['is_correct'] else 0
-                    resp_time = response['response_time']
-                    
-                    f.write(f"Trivia,Q{q_num},{selected},{is_correct},{resp_time}\n")
+                    t_ms = response.get('elapsed_ms', 0)
+                    f.write(f"Trivia,Q{q_num},{selected},{is_correct},{t_ms}\n")
             
             print(f"Interactive task responses saved to: {filepath}")
         
