@@ -1,10 +1,10 @@
 {
   "save_dir": "C:/Users/ptur022/OneDrive - The University of Auckland/Desktop/Blink tracker data",
-  "task_reading": "",
+  "task_reading": "C:\\Users\\ptur022\\OneDrive - The University of Auckland\\Desktop\\Blink tracker data\\stories\\story_001.html",
   "task_video": "C:/Users/ptur022/Downloads/videoplayback.mp4",
   "task_interactive": "c:\\git\\Eye-State-Detector\\trivia_general_knowledge.json",
   "sande": true,
   "osdi6": true,
   "last_name": "test",
-  "duration_minutes": 3
+  "duration_minutes": 1
 }

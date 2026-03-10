@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, font, messagebox
@@ -93,6 +94,11 @@ class Launcher(tk.Tk):
         # Load saved config (if any)
         self._load_config()
         
+        # Set default reading URL if not already set
+        if not self.task_reading:
+            self.task_reading = "https://read.gov/aesop/002.html"
+            self._needs_config_save = True
+
         # Set default trivia file if not already set
         if not self.task_interactive:
             default_trivia = os.path.join(ROOT_DIR, "trivia_general_knowledge.json")
@@ -217,7 +223,8 @@ class Launcher(tk.Tk):
                 task_interactive = data.get("task_interactive", "") or ""
                 
                 # Validate task files - clear if they don't exist
-                if task_reading and not os.path.exists(task_reading):
+                # Skip os.path.exists check for URLs (reading task can be a URL)
+                if task_reading and not task_reading.startswith(("http://", "https://")) and not os.path.exists(task_reading):
                     print(f"Warning: Reading task file not found: {task_reading}")
                     task_reading = ""
                     config_modified = True
@@ -450,6 +457,103 @@ class Launcher(tk.Tk):
             self.start_btn.config(state="normal")
             self.preview_btn.config(state="normal")
     
+    def _download_stories_dialog(self, getter, fname_var, parent_win):
+        """Open a dialog to configure and download stories locally."""
+        from story_downloader import download_stories
+
+        dlg = tk.Toplevel(parent_win)
+        dlg.title("Download Stories")
+        dlg.configure(bg="#111827")
+        dlg.geometry("480x280")
+        dlg.transient(parent_win)
+        dlg.grab_set()
+
+        lf = font.Font(family="Segoe UI", size=10)
+
+        # URL row
+        url_frame = tk.Frame(dlg, bg="#111827")
+        url_frame.pack(fill="x", padx=16, pady=(16, 6))
+        tk.Label(url_frame, text="Start URL:", bg="#111827", fg="#e5e7eb", font=lf, width=12, anchor="w").pack(side="left")
+        default_url = self.task_reading if self.task_reading.startswith("http") else "https://read.gov/aesop/002.html"
+        url_var = tk.StringVar(value=default_url)
+        tk.Entry(url_frame, textvariable=url_var, width=42, font=lf).pack(side="left", padx=(6, 0))
+
+        # Story count row
+        count_frame = tk.Frame(dlg, bg="#111827")
+        count_frame.pack(fill="x", padx=16, pady=6)
+        tk.Label(count_frame, text="Stories:", bg="#111827", fg="#e5e7eb", font=lf, width=12, anchor="w").pack(side="left")
+        count_var = tk.IntVar(value=123)
+        count_lbl = tk.Label(count_frame, text="123", bg="#111827", fg="#9ca3af", font=lf, width=4, anchor="w")
+        count_lbl.pack(side="right", padx=(6, 0))
+        def _on_count(val):
+            count_lbl.config(text=str(int(float(val))))
+        tk.Scale(count_frame, from_=1, to=123, orient="horizontal", variable=count_var,
+                 command=_on_count, bg="#374151", fg="#e5e7eb", highlightthickness=0,
+                 troughcolor="#1f2937", showvalue=False, length=240).pack(side="left", padx=(6, 8), fill="x", expand=True)
+
+        # Output directory row
+        dir_frame = tk.Frame(dlg, bg="#111827")
+        dir_frame.pack(fill="x", padx=16, pady=6)
+        tk.Label(dir_frame, text="Save to:", bg="#111827", fg="#e5e7eb", font=lf, width=12, anchor="w").pack(side="left")
+        default_out = os.path.join(self.save_dir or ROOT_DIR, "stories")
+        out_var = tk.StringVar(value=default_out)
+        out_entry = tk.Entry(dir_frame, textvariable=out_var, width=32, font=lf, state="readonly")
+        out_entry.pack(side="left", padx=(6, 6))
+        def _choose_out():
+            sel = filedialog.askdirectory(title="Save stories to", initialdir=self.save_dir or ROOT_DIR)
+            if sel:
+                out_var.set(os.path.join(sel, "stories"))
+        tk.Button(dir_frame, text="Browse...", command=_choose_out, bg="#374151", fg="#fff", relief="flat", padx=6).pack(side="left")
+
+        # Progress label
+        prog_var = tk.StringVar(value="")
+        tk.Label(dlg, textvariable=prog_var, bg="#111827", fg="#9ca3af", font=lf, wraplength=440).pack(padx=16, pady=6)
+
+        # Buttons
+        btn_frame = tk.Frame(dlg, bg="#111827")
+        btn_frame.pack(fill="x", padx=16, pady=(0, 16))
+        cancel_btn = tk.Button(btn_frame, text="Cancel", command=dlg.destroy,
+                               bg="#374151", fg="#fff", relief="flat", padx=12, pady=6)
+        cancel_btn.pack(side="right", padx=(6, 0))
+        dl_btn = tk.Button(btn_frame, text="Download", bg="#10b981", fg="#fff", relief="flat", padx=12, pady=6)
+        dl_btn.pack(side="right")
+
+        def _run_download():
+            start_url = url_var.get().strip()
+            count = int(count_var.get())
+            out_dir = out_var.get().strip()
+            if not start_url:
+                prog_var.set("Please enter a start URL.")
+                return
+            dl_btn.config(state="disabled", text="Downloading...")
+            cancel_btn.config(state="disabled")
+
+            def _progress(i, total, msg):
+                dlg.after(0, lambda: prog_var.set(f"Story {i}/{total}: {msg}"))
+
+            def _do():
+                try:
+                    paths = download_stories(start_url, count, out_dir, progress_callback=_progress)
+                    if paths:
+                        first = paths[0]
+                        getter(first)
+                        short = first if len(first) <= 60 else f"...{first[-57:]}"
+                        dlg.after(0, lambda: fname_var.set(short))
+                        dlg.after(0, lambda: prog_var.set(f"Downloaded {len(paths)} stories. Reading task updated."))
+                        dlg.after(0, lambda: cancel_btn.config(state="normal", text="Close"))
+                    else:
+                        dlg.after(0, lambda: prog_var.set("No stories downloaded. Check the URL and connection."))
+                        dlg.after(0, lambda: dl_btn.config(state="normal", text="Download"))
+                        dlg.after(0, lambda: cancel_btn.config(state="normal"))
+                except Exception as e:
+                    dlg.after(0, lambda: prog_var.set(f"Error: {e}"))
+                    dlg.after(0, lambda: dl_btn.config(state="normal", text="Download"))
+                    dlg.after(0, lambda: cancel_btn.config(state="normal"))
+
+            threading.Thread(target=_do, daemon=True).start()
+
+        dl_btn.config(command=_run_download)
+
     def _run_questionnaires(self):
         """
         DEPRECATED: Questionnaires are now part of InteractiveTaskWindow.
@@ -485,7 +589,10 @@ class Launcher(tk.Tk):
             show_reading_window(
                 self.task_reading,
                 on_ready_callback=on_ready,
-                duration_seconds=duration_seconds
+                duration_seconds=duration_seconds,
+                save_dir=self.save_dir or ROOT_DIR,
+                participant_name=name,
+                order_code=self.task_order_code,
             )
         except Exception as e:
             messagebox.showerror("Reading Task", f"Failed to launch reading window: {e}")
@@ -596,7 +703,7 @@ class Launcher(tk.Tk):
         rowpad = dict(pady=8, padx=12)
 
         # Helper to render a task row (label, choose button, filename label)
-        def add_task_row(parent, title, getter, filetypes=None, is_interactive=False):
+        def add_task_row(parent, title, getter, filetypes=None, is_interactive=False, is_reading=False):
             frame = tk.Frame(parent, bg="#111827")
             frame.pack(fill="x", **rowpad)
             lbl = tk.Label(frame, text=title + ":", bg="#111827", fg="#e5e7eb", font=label_font, width=14, anchor="w")
@@ -683,6 +790,20 @@ class Launcher(tk.Tk):
                 cb2 = tk.Checkbutton(opts_frame, text="OSDI-6", variable=osdi_var, command=on_osdi, bg="#111827", fg="#e5e7eb", selectcolor="#111827")
                 cb2.pack(side="left", padx=(0, 12))
 
+            if is_reading:
+                dl_frame = tk.Frame(parent, bg="#111827")
+                dl_frame.pack(fill="x", pady=(2, 4), padx=12)
+                indent = tk.Label(dl_frame, text="", bg="#111827", width=14)
+                indent.pack(side="left")
+                def _open_dl_dialog(_getter=getter, _fname_var=fname_var):
+                    self._download_stories_dialog(_getter, _fname_var, win)
+                dl_btn = tk.Button(dl_frame, text="Download stories...", command=_open_dl_dialog,
+                                   bg="#6366f1", fg="#fff", relief="flat", padx=8)
+                dl_btn.pack(side="left", padx=(6, 8))
+                dl_hint = tk.Label(dl_frame, text="Fetch stories locally for offline use",
+                                   bg="#111827", fg="#6b7280", font=label_font)
+                dl_hint.pack(side="left")
+
             return fname_var
 
         # Setters/getters that update state and persist
@@ -740,7 +861,8 @@ class Launcher(tk.Tk):
             title, getter, filetypes = task_map[task_name]
             # Mark Interactive task to include questionnaire checkboxes
             is_interactive = (task_name == "Interactive")
-            add_task_row(win, title, getter, filetypes=filetypes, is_interactive=is_interactive)
+            is_reading = (task_name == "Reading")
+            add_task_row(win, title, getter, filetypes=filetypes, is_interactive=is_interactive, is_reading=is_reading)
 
         # Duration slider
         duration_frame = tk.Frame(win, bg="#111827")
