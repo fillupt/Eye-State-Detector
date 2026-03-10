@@ -1518,11 +1518,11 @@ class InteractiveTaskWindow(tk.Toplevel):
         
         # Correct OSDI-6 response options
         options = [
-            ("All of the time", 4),
-            ("Most of the time", 3),
-            ("Half of the time", 2),
-            ("Some of the time", 1),
-            ("None of the time", 0)
+            ("Constantly", 4),
+            ("Mostly", 3),
+            ("Often", 2),
+            ("Sometimes", 1),
+            ("Never", 0)
         ]
         
         def make_handler(option_key, value):
@@ -1766,7 +1766,7 @@ class InteractiveTaskWindow(tk.Toplevel):
 
                 # OSDI responses with correct labels
                 if self.all_responses['osdi']:
-                    osdi_labels = ["None of the time", "Some of the time", "Half of the time", "Most of the time", "All of the time"]
+                    osdi_labels = ["Never", "Sometimes", "Often", "Mostly", "Constantly"]
                     for key, value in self.all_responses['osdi'].items():
                         option_text = osdi_labels[value]
                         t_ms = self.osdi_time.get(key, int((time.time() - self.start_time) * 1000) if self.start_time else 0)
