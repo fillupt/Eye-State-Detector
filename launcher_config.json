@@ -5,6 +5,7 @@
   "task_interactive": "c:\\git\\Eye-State-Detector\\trivia_general_knowledge.json",
   "sande": true,
   "osdi6": true,
+  "demographics": true,
   "last_name": "test",
   "duration_minutes": 1
 }

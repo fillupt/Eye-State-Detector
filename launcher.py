@@ -53,7 +53,7 @@ class Launcher(tk.Tk):
         header = tk.Label(self, text="Blink or they're gone!", bg="#1f2937", fg="#ffffff", font=header_font)
         header.pack(pady=(14, 6))
 
-        sub = tk.Label(self, text="Enter subject name", bg="#1f2937", fg="#cbd5e1", font=label_font)
+        sub = tk.Label(self, text="Enter subject ID", bg="#1f2937", fg="#cbd5e1", font=label_font)
         sub.pack(pady=(0, 10))
 
         entry_frame = tk.Frame(self, bg="#1f2937")
@@ -79,15 +79,21 @@ class Launcher(tk.Tk):
         setup_btn = tk.Button(btn_frame, text="Setup", command=self.open_setup_window, bg="#8b5cf6", fg="#fff", padx=10, pady=8, relief="flat", font=label_font)
         setup_btn.pack(side="left", padx=4)
 
+        # Quit button
+        quit_btn = tk.Button(btn_frame, text="Quit", command=self.on_close, bg="#374151", fg="#e5e7eb", padx=10, pady=8, relief="flat", font=label_font)
+        quit_btn.pack(side="left", padx=4)
+
         # Ensure task/file attributes exist
         self.task_reading = "https://read.gov/aesop/002.html"  # Default to Aesop's Fables
         self.task_video = ""
         self.task_interactive = ""
         self.sande = False
         self.osdi6 = False
+        self.demographics = True
         self.last_name = ""
         self.save_dir = ""
         self.duration_minutes = 5  # Default 5 minutes
+        self.task_order_override = None  # None = auto-calculate; int 0-5 = manual override
         self._needs_config_save = False  # Flag for deferred config save
         self._preview_verified = False  # Track if preview has been successfully run
 
@@ -111,15 +117,15 @@ class Launcher(tk.Tk):
             self._save_config()
             self._needs_config_save = False
         
-        # Calculate task order based on existing files
-        self.task_order_num = self._calculate_task_order()
+        # Calculate task order based on existing files (or use manual override)
+        self.task_order_num = self.task_order_override if self.task_order_override is not None else self._calculate_task_order()
         self.task_order = TASK_ORDERS[self.task_order_num]
         self.task_order_code = get_order_code(self.task_order)
         
         # Display task order code on home screen (blinded - only show letter code)
-        order_label = tk.Label(self, text=f"Task Order: {self.task_order_code}", 
+        self.order_label = tk.Label(self, text=f"Task Order: {self.task_order_code}", 
                                bg="#1f2937", fg="#fbbf24", font=label_font)
-        order_label.pack(pady=(8, 0))
+        self.order_label.pack(pady=(8, 0))
 
         self.status_label = tk.Label(self, text="Status: Idle", bg="#1f2937", fg="#9ca3af", font=label_font)
         self.status_label.pack(pady=(8, 0))
@@ -180,7 +186,8 @@ class Launcher(tk.Tk):
 
         try:
             self.process = subprocess.Popen(cmd, cwd=ROOT_DIR)
-            self.status_label.config(text=f"Status: Prewarming (PID {self.process.pid})", fg="#fef3c7")
+            self._ready_confirmed = False
+            self._start_prewarm_messages()
             # Update UI to show initializing state
             self.preview_btn.config(text="Initializing...", state="disabled", bg="#f59e0b", fg="#2b0500")
             # Start polling for ready file and process state
@@ -245,6 +252,7 @@ class Launcher(tk.Tk):
                 
                 self.sande = bool(data.get("sande", False))
                 self.osdi6 = bool(data.get("osdi6", False))
+                self.demographics = bool(data.get("demographics", True))
                 self.last_name = data.get("last_name", "") or ""
                 # Load duration with proper type conversion
                 duration_val = data.get("duration_minutes", 5)
@@ -283,6 +291,7 @@ class Launcher(tk.Tk):
                 "task_interactive": self.task_interactive,
                 "sande": bool(self.sande),
                 "osdi6": bool(self.osdi6),
+                "demographics": bool(self.demographics),
                 "last_name": self.name_var.get().strip(),
                 "duration_minutes": duration,
             }
@@ -298,8 +307,44 @@ class Launcher(tk.Tk):
             # bubble up to caller if needed
             raise
 
+    _PREWARM_MESSAGES = [
+        "Starting camera...",
+        "Detecting available cameras...",
+        "Opening video stream...",
+        "Loading eye-state detection model...",
+        "Warming up neural network...",
+        "Calibrating image pipeline...",
+        "Preparing face landmark detector...",
+        "Checking lighting conditions...",
+        "Stabilising frame rate...",
+        "Almost ready...",
+    ]
+
+    def _start_prewarm_messages(self):
+        """Begin cycling through informative status messages while the tracker warms up."""
+        self._prewarm_index = 0
+        self._prewarm_active = True
+        self._tick_prewarm()
+
+    def _tick_prewarm(self):
+        if not self._prewarm_active:
+            return
+        msg = self._PREWARM_MESSAGES[self._prewarm_index % len(self._PREWARM_MESSAGES)]
+        self.status_label.config(text=f"Status: {msg}", fg="#fef3c7")
+        self._prewarm_index += 1
+        self._prewarm_after_id = self.after(1800, self._tick_prewarm)
+
+    def _stop_prewarm_messages(self):
+        self._prewarm_active = False
+        if hasattr(self, '_prewarm_after_id'):
+            try:
+                self.after_cancel(self._prewarm_after_id)
+            except Exception:
+                pass
+
     def stop_tracker(self):
         # Stop the running tracker process
+        self._stop_prewarm_messages()
         if self.process is None:
             self.status_label.config(text="Status: Idle", fg="#9ca3af")
             self.preview_btn.config(text="Preview", state="normal", bg="#3b82f6", fg="#fff")
@@ -327,6 +372,7 @@ class Launcher(tk.Tk):
         # If process exited
         if self.process is None or (self.process.poll() is not None):
             self.status_label.config(text="Status: Stopped", fg="#fca5a5")
+            self._stop_prewarm_messages()
             self.preview_btn.config(text="Preview", state="normal", bg="#3b82f6", fg="#fff")
             self.process = None
             return
@@ -346,7 +392,8 @@ class Launcher(tk.Tk):
     def _confirm_running(self):
         """Confirm tracker is running after delay to ensure window is visible."""
         if self.process and self.process.poll() is None:
-            self.status_label.config(text=f"Status: Running (PID {self.process.pid})", fg="#86efac")
+            self._stop_prewarm_messages()
+            self.status_label.config(text="Status: Camera ready", fg="#86efac")
             self.preview_btn.config(text="Stop", state="normal", bg="#ef4444", fg="#fff")
             # Enable Start button now that preview has been verified
             self._preview_verified = True
@@ -429,6 +476,8 @@ class Launcher(tk.Tk):
                 time.sleep(0.5)
             
             # Run each task in order
+            trivia_score = None
+            trivia_total = None
             for i, task_name in enumerate(self.task_order, 1):
                 self.status_label.config(text=f"Status: Task {i}/3 - {task_name}", fg="#86efac")
                 self.update()
@@ -438,7 +487,8 @@ class Launcher(tk.Tk):
                 elif task_name == "Video":
                     self._run_video_task(name, duration_seconds)
                 elif task_name == "Interactive":
-                    self._run_interactive_task(name, duration_seconds)
+                    sc, tot = self._run_interactive_task(name, duration_seconds)
+                    trivia_score, trivia_total = sc, tot
             
             # Stop eye tracker
             self._send_tracker_command("SHUTDOWN")
@@ -447,7 +497,12 @@ class Launcher(tk.Tk):
                 self.process = None
             
             self.status_label.config(text="Status: Experiment Complete!", fg="#86efac")
-            messagebox.showinfo("Complete", "Experiment completed successfully!")
+            if trivia_score is not None and trivia_total and trivia_total > 0:
+                pct = (trivia_score / trivia_total) * 100
+                score_line = f"\n\nYou got {trivia_score} of {trivia_total} ({pct:.1f}%) of the trivia questions correct!"
+            else:
+                score_line = ""
+            messagebox.showinfo("Complete", f"Experiment completed successfully!{score_line}")
             
         except Exception as e:
             messagebox.showerror("Error", f"Error during experiment:\n{e}")
@@ -457,7 +512,20 @@ class Launcher(tk.Tk):
             self.start_btn.config(state="normal")
             self.preview_btn.config(state="normal")
     
-    def _download_stories_dialog(self, getter, fname_var, parent_win):
+    def _stories_default_dir(self):
+        """Return the directory where stories are (or will be) saved."""
+        if self.task_reading and not self.task_reading.startswith(("http://", "https://")):
+            return os.path.dirname(os.path.abspath(self.task_reading))
+        return os.path.join(self.save_dir or ROOT_DIR, "stories")
+
+    @staticmethod
+    def _count_stories(directory):
+        """Return the number of .html files in directory."""
+        if not os.path.isdir(directory):
+            return 0
+        return len([f for f in os.listdir(directory) if f.lower().endswith(".html")])
+
+    def _download_stories_dialog(self, getter, fname_var, parent_win, dl_btn_ref=None, dl_hint_ref=None):
         """Open a dialog to configure and download stories locally."""
         from story_downloader import download_stories
 
@@ -533,14 +601,27 @@ class Launcher(tk.Tk):
 
             def _do():
                 try:
+                    # Delete any existing .html files in the output dir first
+                    if os.path.isdir(out_dir):
+                        for _f in os.listdir(out_dir):
+                            if _f.lower().endswith(".html"):
+                                try:
+                                    os.remove(os.path.join(out_dir, _f))
+                                except Exception:
+                                    pass
                     paths = download_stories(start_url, count, out_dir, progress_callback=_progress)
                     if paths:
                         first = paths[0]
                         getter(first)
                         short = first if len(first) <= 60 else f"...{first[-57:]}"
                         dlg.after(0, lambda: fname_var.set(short))
-                        dlg.after(0, lambda: prog_var.set(f"Downloaded {len(paths)} stories. Reading task updated."))
+                        n = len(paths)
+                        dlg.after(0, lambda: prog_var.set(f"Downloaded {n} stories. Reading task updated."))
                         dlg.after(0, lambda: cancel_btn.config(state="normal", text="Close"))
+                        if dl_btn_ref:
+                            dlg.after(0, lambda: dl_btn_ref.config(text="Download again..."))
+                        if dl_hint_ref:
+                            dlg.after(0, lambda: dl_hint_ref.config(text=f"{n} stories already downloaded", fg="#10b981"))
                     else:
                         dlg.after(0, lambda: prog_var.set("No stories downloaded. Check the URL and connection."))
                         dlg.after(0, lambda: dl_btn.config(state="normal", text="Download"))
@@ -654,14 +735,16 @@ class Launcher(tk.Tk):
             order_code=self.task_order_code,
             save_dir=self.save_dir or ROOT_DIR,
             on_ready_callback=on_ready,
-            enable_sande=True,  # TODO: Make configurable in settings
-            enable_osdi=True    # TODO: Make configurable in settings
+            enable_sande=self.sande,
+            enable_osdi=self.osdi6,
+            enable_demographics=self.demographics
         )
         self.wait_window(interactive)
         
         # Stop recording
         self._send_tracker_command("STOP_RECORDING")
         print(f"[DEBUG] Interactive task completed - stopped recording", file=sys.stderr)
+        return interactive.score, interactive.total_shown
 
 
     def on_close(self):
@@ -678,7 +761,7 @@ class Launcher(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Setup — Task files and options")
         win.configure(bg="#111827")
-        win.geometry("560x370")
+        win.geometry("660x370")
         # center relative to main window
         win.transient(self)
         # Position the setup window centered over the main launcher window
@@ -774,8 +857,13 @@ class Launcher(tk.Tk):
                 opts_label = tk.Label(opts_frame, text="Questionnaires:", bg="#111827", fg="#9ca3af", font=label_font)
                 opts_label.pack(side="left", padx=(6, 12))
                 
+                demographics_var = tk.BooleanVar(value=bool(self.demographics))
                 sande_var = tk.BooleanVar(value=bool(self.sande))
                 osdi_var = tk.BooleanVar(value=bool(self.osdi6))
+
+                def on_demographics():
+                    self.demographics = bool(demographics_var.get())
+                    self._save_config()
 
                 def on_sande():
                     self.sande = bool(sande_var.get())
@@ -785,6 +873,8 @@ class Launcher(tk.Tk):
                     self.osdi6 = bool(osdi_var.get())
                     self._save_config()
 
+                cb0 = tk.Checkbutton(opts_frame, text="Demographics", variable=demographics_var, command=on_demographics, bg="#111827", fg="#e5e7eb", selectcolor="#111827")
+                cb0.pack(side="left", padx=(0, 12))
                 cb1 = tk.Checkbutton(opts_frame, text="SANDE", variable=sande_var, command=on_sande, bg="#111827", fg="#e5e7eb", selectcolor="#111827")
                 cb1.pack(side="left", padx=(0, 12))
                 cb2 = tk.Checkbutton(opts_frame, text="OSDI-6", variable=osdi_var, command=on_osdi, bg="#111827", fg="#e5e7eb", selectcolor="#111827")
@@ -795,14 +885,18 @@ class Launcher(tk.Tk):
                 dl_frame.pack(fill="x", pady=(2, 4), padx=12)
                 indent = tk.Label(dl_frame, text="", bg="#111827", width=14)
                 indent.pack(side="left")
-                def _open_dl_dialog(_getter=getter, _fname_var=fname_var):
-                    self._download_stories_dialog(_getter, _fname_var, win)
-                dl_btn = tk.Button(dl_frame, text="Download stories...", command=_open_dl_dialog,
-                                   bg="#6366f1", fg="#fff", relief="flat", padx=8)
+                _stories_dir = self._stories_default_dir()
+                _existing = self._count_stories(_stories_dir)
+                _btn_text = "Download again..." if _existing > 0 else "Download stories..."
+                _hint_text = f"{_existing} stories already downloaded" if _existing > 0 else "Fetch stories locally for offline use"
+                _hint_color = "#10b981" if _existing > 0 else "#6b7280"
+                dl_btn = tk.Button(dl_frame, text=_btn_text, bg="#6366f1", fg="#fff", relief="flat", padx=8)
                 dl_btn.pack(side="left", padx=(6, 8))
-                dl_hint = tk.Label(dl_frame, text="Fetch stories locally for offline use",
-                                   bg="#111827", fg="#6b7280", font=label_font)
+                dl_hint = tk.Label(dl_frame, text=_hint_text, bg="#111827", fg=_hint_color, font=label_font)
                 dl_hint.pack(side="left")
+                def _open_dl_dialog(_getter=getter, _fname_var=fname_var, _btn=dl_btn, _hint=dl_hint):
+                    self._download_stories_dialog(_getter, _fname_var, win, _btn, _hint)
+                dl_btn.config(command=_open_dl_dialog)
 
             return fname_var
 
@@ -846,15 +940,43 @@ class Launcher(tk.Tk):
             ]),
         }
         
-        # Add label showing task order code (blinded)
+        # Add row for task order selection
         order_frame = tk.Frame(win, bg="#111827")
         order_frame.pack(fill="x", pady=(8, 4), padx=12)
-        order_info = tk.Label(order_frame, 
-                             text=f"Task Order: {self.task_order_code}", 
-                             bg="#111827", fg="#fbbf24", font=label_font, anchor="w")
-        order_info.pack(side="left")
-        
-        print(f"[DEBUG] Setup window opening - sande={self.sande}, osdi6={self.osdi6}, duration={self.duration_minutes}", file=sys.stderr)
+        tk.Label(order_frame, text="Task Order:", bg="#111827", fg="#e5e7eb", font=label_font, width=14, anchor="w").pack(side="left")
+
+        # Build option list: all 6 orders, mark the auto-calculated one
+        auto_num = self._calculate_task_order()
+        order_options = []
+        for num, tasks in TASK_ORDERS.items():
+            code = get_order_code(tasks)
+            label = f"{code}  [auto]" if num == auto_num else code
+            order_options.append((num, label))
+        order_labels = [lbl for _, lbl in order_options]
+        current_num = self.task_order_num
+        current_label = next(lbl for n, lbl in order_options if n == current_num)
+        order_var = tk.StringVar(value=current_label)
+        om = tk.OptionMenu(order_frame, order_var, *order_labels)
+        om.config(bg="#374151", fg="#fbbf24", activebackground="#4b5563", activeforeground="#fbbf24",
+                  relief="flat", font=label_font, highlightthickness=0, width=32)
+        om["menu"].config(bg="#374151", fg="#fbbf24", font=label_font)
+        om.pack(side="left", padx=(6, 0))
+
+        def _on_order_change(*_):
+            selected_lbl = order_var.get()
+            new_num = next(n for n, lbl in order_options if lbl == selected_lbl)
+            self.task_order_override = new_num
+            self.task_order_num = new_num
+            self.task_order = TASK_ORDERS[new_num]
+            self.task_order_code = get_order_code(self.task_order)
+            self.order_label.config(text=f"Task Order: {self.task_order_code}")
+            # Rebuild the task rows to reflect new order - close and reopen setup
+            win.destroy()
+            self.after(50, self.open_setup_window)
+
+        order_var.trace_add("write", _on_order_change)
+
+        print(f"[DEBUG] Setup window opening - demographics={self.demographics}, sande={self.sande}, osdi6={self.osdi6}, duration={self.duration_minutes}", file=sys.stderr)
         
         # Add task rows in the correct order
         for task_name in self.task_order:

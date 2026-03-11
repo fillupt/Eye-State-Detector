@@ -210,6 +210,7 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
         y=webview_top,
         resizable=False,
         frameless=True,
+        easy_drag=False,
         js_api=api_obj
     )
 
@@ -273,12 +274,22 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
             " if (nextLink) {"
             "  nextLink.style.setProperty(\"pointer-events\", \"auto\", \"important\");"
             "  nextLink.style.cursor = \"pointer\";"
+            "  nextLink.addEventListener(\"mouseover\", function() {"
+            "   this.style.background = \"linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)\";"
+            "   this.style.boxShadow = \"0 4px 14px rgba(37,99,235,0.38)\";"
+            "   this.style.transform = \"translateY(-1px)\";"
+            "  });"
+            "  nextLink.addEventListener(\"mouseout\", function() {"
+            "   this.style.background = \"linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)\";"
+            "   this.style.boxShadow = \"0 2px 8px rgba(37,99,235,0.28)\";"
+            "   this.style.transform = \"\";"
+            "  });"
             " }"
             " [\"header\",\"logo\",\"aboutDiv\"].forEach(function(id) {"
             "  var el = document.getElementById(id);"
             "  if (el) el.remove();"
             " });"
-            " document.body.style.zoom = \"80%\";"
+            " document.body.style.opacity = \"1\";"
             " return nextLink ? nextLink.href : null;"
             "})()"
         )

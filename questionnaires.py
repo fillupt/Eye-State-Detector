@@ -1062,7 +1062,8 @@ class InteractiveTaskWindow(tk.Toplevel):
     
     def __init__(self, parent, trivia_file="", duration_seconds=300, 
                  participant_name="", order_code="", save_dir="",
-                 on_ready_callback=None, enable_sande=True, enable_osdi=True):
+                 on_ready_callback=None, enable_sande=True, enable_osdi=True,
+                 enable_demographics=True):
         super().__init__(parent)
         
         self.participant_name = participant_name
@@ -1073,12 +1074,16 @@ class InteractiveTaskWindow(tk.Toplevel):
         self.on_ready_callback = on_ready_callback
         self.enable_sande = enable_sande
         self.enable_osdi = enable_osdi
+        self.enable_demographics = enable_demographics
         
         # State tracking
         self.current_section = None  # "sande", "osdi", or "trivia"
         self.completed = False
         self.start_time = None
         
+        # Demographics state
+        self.demographics_responses = {}
+
         # SANDE state
         self.sande_responses = {}
         
@@ -1095,12 +1100,14 @@ class InteractiveTaskWindow(tk.Toplevel):
         
         # Combined responses for single CSV
         self.all_responses = {
+            'demographics': {},
             'sande': {},
             'osdi': {},
             'trivia': []
         }
 
         # Per-question relative timestamps (milliseconds since interactive start)
+        self.demographics_time = {}
         self.sande_time = {}
         self.osdi_time = {}
         
@@ -1153,7 +1160,9 @@ class InteractiveTaskWindow(tk.Toplevel):
     
     def _start_first_section(self):
         """Start with first enabled section"""
-        if self.enable_sande:
+        if self.enable_demographics:
+            self._show_demographics()
+        elif self.enable_sande:
             self._show_sande()
         elif self.enable_osdi:
             self._show_osdi()
@@ -1173,6 +1182,212 @@ class InteractiveTaskWindow(tk.Toplevel):
         for widget in self.content_container.winfo_children():
             widget.destroy()
     
+    # ==================== Demographics Section ====================
+
+    def _show_demographics(self):
+        """Show demographics questionnaire section"""
+        self.current_section = "demographics"
+        self.title("Interactive Task - Demographics")
+        self._clear_content()
+
+        container = tk.Frame(self.content_container, bg="#1f2937")
+        container.pack(expand=True, fill="both")
+
+        content = tk.Frame(container, bg="#1f2937")
+        content.pack(expand=True)
+
+        # Header
+        tk.Label(
+            content,
+            text="Demographics",
+            bg="#1f2937",
+            fg="#ffffff",
+            font=self.title_font
+        ).pack(pady=(20, 10))
+
+        # Instructions
+        tk.Label(
+            content,
+            text="Please answer the following questions about yourself.",
+            bg="#1f2937",
+            fg="#cbd5e1",
+            font=self.label_font,
+            wraplength=1000
+        ).pack(pady=(0, 30))
+
+        heading_font = font.Font(family="Segoe UI", size=11, weight="bold")
+
+        # Q1: Age
+        age_frame = tk.Frame(content, bg="#1f2937")
+        age_frame.pack(pady=(0, 20), padx=40, fill="x")
+        tk.Label(
+            age_frame,
+            text="1. How old are you?",
+            bg="#1f2937",
+            fg="#ffffff",
+            font=heading_font,
+            anchor="w"
+        ).pack(fill="x", pady=(0, 8))
+        self._age_var = tk.StringVar()
+
+        def _validate_age(new_val):
+            return new_val == "" or (new_val.isdigit() and not new_val.startswith("0"))
+
+        vcmd = (self.register(_validate_age), "%P")
+        age_entry = tk.Entry(
+            age_frame,
+            textvariable=self._age_var,
+            font=self.label_font,
+            bg="#374151",
+            fg="#ffffff",
+            insertbackground="#ffffff",
+            relief="flat",
+            width=10,
+            justify="center",
+            validate="key",
+            validatecommand=vcmd
+        )
+        age_entry.pack(anchor="w", ipady=6, padx=4)
+
+        def _on_age_change(*args):
+            if self.start_time:
+                self.demographics_time["age"] = int((time.time() - self.start_time) * 1000)
+        self._age_var.trace_add("write", _on_age_change)
+
+        # Q2: Gender
+        gender_frame = tk.Frame(content, bg="#1f2937")
+        gender_frame.pack(pady=(0, 20), padx=40, fill="x")
+        tk.Label(
+            gender_frame,
+            text="2. What is your gender?",
+            bg="#1f2937",
+            fg="#ffffff",
+            font=heading_font,
+            anchor="w"
+        ).pack(fill="x", pady=(0, 8))
+        gender_options = ["Prefer not to say", "Male", "Female", "Non-binary", "Other"]
+        self._gender_var = tk.StringVar(value=gender_options[0])
+        gender_menu = tk.OptionMenu(gender_frame, self._gender_var, *gender_options)
+        gender_menu.config(
+            bg="#374151", fg="#ffffff", activebackground="#4b5563",
+            activeforeground="#ffffff", relief="flat", font=self.label_font,
+            highlightthickness=0
+        )
+        gender_menu["menu"].config(bg="#374151", fg="#ffffff", font=self.label_font)
+        gender_menu.pack(anchor="w", padx=4)
+
+        def _on_gender_change(*args):
+            if self.start_time:
+                self.demographics_time["gender"] = int((time.time() - self.start_time) * 1000)
+        self._gender_var.trace_add("write", _on_gender_change)
+
+        # Q3: Contact lenses
+        contacts_frame = tk.Frame(content, bg="#1f2937")
+        contacts_frame.pack(pady=(0, 20), padx=40, fill="x")
+        tk.Label(
+            contacts_frame,
+            text="3. Are you wearing contact lenses?",
+            bg="#1f2937",
+            fg="#ffffff",
+            font=heading_font,
+            anchor="w"
+        ).pack(fill="x", pady=(0, 8))
+        self._contacts_var = tk.StringVar(value="")
+        btn_row = tk.Frame(contacts_frame, bg="#1f2937")
+        btn_row.pack(anchor="w", padx=4)
+        contact_btns = []
+        for option in ("Yes", "No"):
+            btn = tk.Button(
+                btn_row,
+                text=option,
+                font=self.label_font,
+                bg="#374151",
+                fg="#e5e7eb",
+                activebackground="#4b5563",
+                activeforeground="#ffffff",
+                relief="flat",
+                cursor="hand2",
+                padx=20,
+                pady=6
+            )
+            btn.pack(side="left", padx=(0, 8))
+            contact_btns.append(btn)
+
+        def make_contact_cmd(opt, btns):
+            def cmd():
+                self._contacts_var.set(opt)
+                if self.start_time:
+                    self.demographics_time["contact_lenses"] = int((time.time() - self.start_time) * 1000)
+                for b in btns:
+                    b.config(bg="#374151", fg="#e5e7eb")
+                btns[0 if opt == "Yes" else 1].config(bg="#3b82f6", fg="#ffffff")
+            return cmd
+
+        contact_btns[0].config(command=make_contact_cmd("Yes", contact_btns))
+        contact_btns[1].config(command=make_contact_cmd("No", contact_btns))
+
+        # Next button
+        tk.Button(
+            content,
+            text="Next →",
+            command=self._demographics_next,
+            font=self.label_font,
+            bg="#3b82f6",
+            fg="#ffffff",
+            activebackground="#2563eb",
+            activeforeground="#ffffff",
+            relief="flat",
+            cursor="hand2",
+            padx=30,
+            pady=8
+        ).pack(pady=30)
+
+    def _demographics_next(self):
+        """Validate demographics and move to next section"""
+        # Validate age
+        age_str = self._age_var.get().strip()
+        if not age_str:
+            messagebox.showwarning("Incomplete", "Please enter your age.", parent=self)
+            return
+        try:
+            age = int(age_str)
+            if age < 1 or age > 120:
+                raise ValueError
+        except ValueError:
+            messagebox.showwarning("Invalid Age", "Please enter a valid age (1–120).", parent=self)
+            return
+
+        # Validate contact lenses selection
+        if not self._contacts_var.get():
+            messagebox.showwarning(
+                "Incomplete",
+                "Please indicate whether you are wearing contact lenses.",
+                parent=self
+            )
+            return
+
+        # Ensure timestamps recorded for all fields
+        now_ms = int((time.time() - self.start_time) * 1000) if self.start_time else 0
+        self.demographics_time.setdefault("age", now_ms)
+        self.demographics_time.setdefault("gender", now_ms)
+        self.demographics_time.setdefault("contact_lenses", now_ms)
+
+        # Save responses
+        self.demographics_responses = {
+            "age": age,
+            "gender": self._gender_var.get(),
+            "contact_lenses": self._contacts_var.get()
+        }
+        self.all_responses['demographics'] = self.demographics_responses.copy()
+
+        # Move to next section
+        if self.enable_sande:
+            self._show_sande()
+        elif self.enable_osdi:
+            self._show_osdi()
+        else:
+            self._show_trivia()
+
     # ==================== SANDE Section ====================
     
     def _show_sande(self):
@@ -1757,6 +1972,12 @@ class InteractiveTaskWindow(tk.Toplevel):
             with open(filepath, 'w', encoding='utf-8') as f:
                 # Header (timestamp now = milliseconds since interactive task start)
                 f.write("section,question,response,value,timestamp_ms\n")
+
+                # Demographics responses
+                if self.all_responses['demographics']:
+                    for key, value in self.all_responses['demographics'].items():
+                        t_ms = self.demographics_time.get(key, int((time.time() - self.start_time) * 1000) if self.start_time else 0)
+                        f.write(f"Demographics,{key},{value},{value},{t_ms}\n")
 
                 # SANDE responses (use recorded ms or fallback to end time)
                 if self.all_responses['sande']:

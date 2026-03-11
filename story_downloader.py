@@ -6,13 +6,48 @@ from urllib.parse import urljoin
 from html.parser import HTMLParser
 
 _CSS = """
-body { font-family: Georgia, serif; max-width: 820px; margin: 40px auto; padding: 0 24px;
-       line-height: 1.85; background: #fafaf8; color: #1a1a1a; font-size: 1.05em; }
-h1   { font-size: 1.6em; margin-bottom: 0.4em; }
-p    { margin: 0.75em 0; }
-.nav { margin-top: 2.5em; }
-.nav a { font-size: 1em; text-decoration: none; color: #1a5fa8; border: 1px solid #1a5fa8;
-         padding: 6px 16px; border-radius: 4px; }
+html { zoom: 80%; }
+body {
+    font-family: Georgia, 'Times New Roman', serif;
+    max-width: 820px;
+    margin: 40px auto;
+    padding: 0 32px;
+    line-height: 1.9;
+    background: #f8f6f1;
+    color: #1c1c1c;
+    font-size: 1.1em;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+h1 {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 1.75em;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.55em;
+    color: #111;
+}
+p { margin: 0.82em 0; }
+.nav { margin-top: 2.8em; text-align: left; }
+.nav a {
+    display: inline-block;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.95em;
+    font-weight: 600;
+    text-decoration: none;
+    color: #fff;
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    padding: 10px 26px;
+    border-radius: 50px;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.28);
+    letter-spacing: 0.02em;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.nav a:hover {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+    box-shadow: 0 4px 14px rgba(37,99,235,0.38);
+    transform: translateY(-1px);
+}
 """
 
 

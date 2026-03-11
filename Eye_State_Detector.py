@@ -166,16 +166,6 @@ try:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = face_mesh.process(rgb_frame)
 
-        # Write a ready file the first time processing happens successfully.
-        if (not ready_written) and ret:
-            try:
-                with open(READY_PATH, "w") as f:
-                    f.write(str(os.getpid()))
-                ready_written = True
-            except Exception:
-                # Ignore write failures; launcher will simply keep waiting
-                pass
-
         # Create a fixed-size display frame (640x480)
         display_frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
@@ -190,11 +180,11 @@ try:
                 face_x_min, face_x_max = int(min(xs)), int(max(xs))
                 face_y_min, face_y_max = int(min(ys)), int(max(ys))
                 
-                # Add padding and calculate crop region (reduced zoom: 1.5x instead of 2x)
+                # Add padding and calculate crop region
                 face_w = face_x_max - face_x_min
                 face_h = face_y_max - face_y_min
-                pad_w = int(face_w * 0.5)  # More padding = less zoom
-                pad_h = int(face_h * 0.5)
+                pad_w = int(face_w * 1.2)  # More padding = less zoom
+                pad_h = int(face_h * 1.2)
                 
                 crop_x1 = max(0, face_x_min - pad_w)
                 crop_y1 = max(0, face_y_min - pad_h)
@@ -305,28 +295,32 @@ try:
                         re_width
                     ])
 
-                # Determine eye states for color coding
+                # Determine eye states (for data recording only; display always uses fixed colour)
                 if left_ear < EAR_THRESHOLD:
                     left_eye_status = "Closed"
-                    left_color = (0, 0, 255)  # Red
                 else:
                     left_eye_status = "Open"
-                    left_color = (0, 255, 0)  # Green
                 
                 if right_ear < EAR_THRESHOLD:
                     right_eye_status = "Closed"
-                    right_color = (0, 0, 255)  # Red
                 else:
                     right_eye_status = "Open"
-                    right_color = (0, 255, 0)  # Green
 
-                # Draw eyes with color coding (no text overlay)
-                draw_eye(frame, LEFT_EYE, landmarks, color=left_color)
-                draw_eye(frame, RIGHT_EYE, landmarks, color=right_color)
+                # Draw eyes with a fixed colour (cyan) — no live open/closed indication
+                draw_eye(frame, LEFT_EYE, landmarks, color=(0, 255, 255))
+                draw_eye(frame, RIGHT_EYE, landmarks, color=(0, 255, 255))
 
         # Show frame only if not in headless mode and window hasn't been closed
         if not HEADLESS and not window_closed:
             cv2.imshow("Eye State Detection", frame)
+            # Signal ready only after the window is actually displaying
+            if not ready_written:
+                try:
+                    with open(READY_PATH, "w") as f:
+                        f.write(str(os.getpid()))
+                    ready_written = True
+                except Exception:
+                    pass
             key = cv2.waitKey(1) & 0xFF
             # Check if window is closed (user clicked X) - switch to headless mode
             if cv2.getWindowProperty("Eye State Detection", cv2.WND_PROP_VISIBLE) < 1:
