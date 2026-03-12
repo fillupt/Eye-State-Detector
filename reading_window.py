@@ -15,15 +15,7 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
     import ctypes
     from ctypes import windll
 
-    # Make the process DPI aware to get actual screen dimensions
-    try:
-        windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
-    except:
-        try:
-            windll.user32.SetProcessDPIAware()  # Fallback for older Windows
-        except:
-            pass
-
+    # DPI awareness is set once at launcher startup; just read the current values.
     user32 = windll.user32
     # Get actual screen dimensions (not scaled)
     screen_width = user32.GetSystemMetrics(0)

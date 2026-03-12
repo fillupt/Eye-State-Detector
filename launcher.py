@@ -8,6 +8,17 @@ import time
 import tkinter as tk
 from tkinter import filedialog, font, messagebox
 
+# Set DPI awareness once, before tkinter is initialised, so that all windows
+# (reading, video, questionnaire) share the same physical-pixel coordinate space.
+try:
+    from ctypes import windll
+    windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+except Exception:
+    try:
+        windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -40,10 +51,16 @@ class Launcher(tk.Tk):
         self.configure(bg="#1f2937")
         self.process = None
 
-        # Center window
-        self.width = 420
-        # Make window taller so the directory label can wrap to multiple lines
-        self.height = 300
+        # Center window — scale by DPI factor so the window is the same physical size
+        # regardless of Windows display scaling (DPI awareness is set at process start).
+        try:
+            from ctypes import windll
+            _dpi = windll.user32.GetDpiForSystem()
+            _scale = _dpi / 96.0
+        except Exception:
+            _scale = 1.0
+        self.width  = int(420 * _scale)
+        self.height = int(340 * _scale)
         self._center_window()
 
         # Styling

@@ -4,6 +4,7 @@ import html as _html
 from urllib.request import urlopen, Request
 from urllib.parse import urljoin
 from html.parser import HTMLParser
+import base64
 
 _CSS = """
 html { zoom: 80%; }
@@ -48,22 +49,42 @@ p { margin: 0.82em 0; }
     box-shadow: 0 4px 14px rgba(37,99,235,0.38);
     transform: translateY(-1px);
 }
+p.moral {
+    font-style: italic;
+    text-align: center;
+    margin-top: 1.6em;
+    color: #444;
+}
+img.story-img {
+    float: right;
+    max-width: 260px;
+    margin: 0 0 1.2em 2em;
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+}
 """
 
 
 class _StoryParser(HTMLParser):
-    """Extract story title, body paragraphs, and next-link href from a page."""
+    """Extract title, paragraphs, blockquote morals, images, and next-link."""
+
+    # Filenames that are clearly decorative/navigation rather than story art
+    _SKIP_IMGS = {"vines.jpg", "logo-loc.jpg", "logo.jpg", "spacer.gif", "bullet.gif"}
 
     def __init__(self):
         super().__init__()
         self.title = ""
-        self.paragraphs = []
+        self.paragraphs = []   # list of (inner_html, is_moral)
+        self.images = []       # list of (src, alt) — story art only
         self.next_href = None
 
         self._depth = 0
         self._content_div_depth = None
         self._in_p = False
-        self._p_buf = []
+        self._p_chunks = []    # (text, is_italic) within current <p>
+        self._em_depth = 0
+        self._in_blockquote = False
+        self._bq_buf = []
         self._in_heading = False
         self._heading_buf = []
         self._in_a = False
@@ -82,7 +103,15 @@ class _StoryParser(HTMLParser):
 
         if tag == "p":
             self._in_p = True
-            self._p_buf = []
+            self._p_chunks = []
+            self._em_depth = 0
+
+        if tag in ("em", "i") and self._in_p:
+            self._em_depth += 1
+
+        if tag == "blockquote":
+            self._in_blockquote = True
+            self._bq_buf = []
 
         if tag in ("h1", "h2", "h3") and not self.title:
             self._in_heading = True
@@ -93,13 +122,39 @@ class _StoryParser(HTMLParser):
             self._a_href = attrs_d.get("href", "")
             self._a_buf = []
 
+        if tag == "img":
+            src = attrs_d.get("src", "")
+            alt = attrs_d.get("alt", "")
+            fname = src.rsplit("/", 1)[-1].lower()
+            if src and fname not in self._SKIP_IMGS and not fname.startswith("logo"):
+                self.images.append((src, alt))
+
     def handle_endtag(self, tag):
+        if tag in ("em", "i") and self._in_p and self._em_depth > 0:
+            self._em_depth -= 1
+
         if tag == "p" and self._in_p:
-            text = "".join(self._p_buf).strip()
-            if text and len(text) > 15:
-                self.paragraphs.append(text)
+            inner_parts = []
+            for text, is_em in self._p_chunks:
+                esc = _html.escape(text)
+                inner_parts.append(f"<em>{esc}</em>" if is_em else esc)
+            inner = "".join(inner_parts).strip()
+            total_text = "".join(t for t, _ in self._p_chunks).strip()
+            if inner and len(total_text) > 15:
+                non_ws = [(t, em) for t, em in self._p_chunks if t.strip()]
+                all_italic = bool(non_ws) and all(em for _, em in non_ws)
+                is_moral = all_italic or total_text.lower().startswith("moral")
+                self.paragraphs.append((inner, is_moral))
             self._in_p = False
-            self._p_buf = []
+            self._p_chunks = []
+            self._em_depth = 0
+
+        if tag == "blockquote" and self._in_blockquote:
+            text = "".join(self._bq_buf).strip()
+            if text:
+                self.paragraphs.append((_html.escape(text), True))
+            self._in_blockquote = False
+            self._bq_buf = []
 
         if tag in ("h1", "h2", "h3") and self._in_heading:
             candidate = "".join(self._heading_buf).strip()
@@ -124,7 +179,9 @@ class _StoryParser(HTMLParser):
 
     def handle_data(self, data):
         if self._in_p:
-            self._p_buf.append(data)
+            self._p_chunks.append((data, self._em_depth > 0))
+        if self._in_blockquote:
+            self._bq_buf.append(data)
         if self._in_heading:
             self._heading_buf.append(data)
         if self._in_a:
@@ -138,9 +195,32 @@ def _fetch(url):
         return resp.read().decode(charset, errors="replace"), resp.geturl()
 
 
-def _make_html(title, paragraphs, next_filename=None):
+def _fetch_image_b64(url):
+    """Download an image and return a base64 data URI, or None on failure."""
+    try:
+        req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(req, timeout=10) as resp:
+            content_type = resp.headers.get_content_type() or "image/jpeg"
+            data = resp.read()
+        b64 = base64.b64encode(data).decode("ascii")
+        return f"data:{content_type};base64,{b64}"
+    except Exception:
+        return None
+
+
+def _make_html(title, paragraphs, next_filename=None, image_uri=None, image_alt=""):
     esc_title = _html.escape(title)
-    paras_html = "\n".join(f"<p>{_html.escape(p)}</p>" for p in paragraphs)
+
+    img_html = ""
+    if image_uri:
+        img_html = f'<img class="story-img" src="{image_uri}" alt="{_html.escape(image_alt)}">\n'
+
+    paras_html_parts = []
+    for inner_html, is_moral in paragraphs:
+        cls = ' class="moral"' if is_moral else ""
+        paras_html_parts.append(f"<p{cls}>{inner_html}</p>")
+    paras_html = "\n".join(paras_html_parts)
+
     nav_html = (
         f'<div class="nav"><a href="{_html.escape(next_filename)}">Next story &rarr;</a></div>'
         if next_filename else ""
@@ -153,6 +233,7 @@ def _make_html(title, paragraphs, next_filename=None):
         f"<style>{_CSS}</style></head>\n"
         "<body>\n"
         f"<h1>{esc_title}</h1>\n"
+        f"{img_html}"
         f"{paras_html}\n"
         f"{nav_html}\n"
         "</body>\n</html>\n"
@@ -185,10 +266,11 @@ def download_stories(start_url, count, output_dir, progress_callback=None):
         parser.feed(html_text)
 
         title = parser.title or f"Story {i + 1}"
-        paragraphs = parser.paragraphs or ["(No text found on this page.)"]
+        paragraphs = parser.paragraphs or [("(No text found on this page.)", False)]
         next_href = parser.next_href
+        images = [(urljoin(resolved_url, src), alt) for src, alt in parser.images]
 
-        collected.append((title, paragraphs, resolved_url))
+        collected.append((title, paragraphs, images, resolved_url))
 
         if next_href:
             current_url = urljoin(resolved_url, next_href)
@@ -204,11 +286,17 @@ def download_stories(start_url, count, output_dir, progress_callback=None):
 
     # Write HTML files with relative forward links
     saved_paths = []
-    for i, (title, paragraphs, _) in enumerate(collected):
+    for i, (title, paragraphs, images, _) in enumerate(collected):
         filename = f"story_{i + 1:03d}.html"
         filepath = os.path.join(output_dir, filename)
         next_filename = f"story_{i + 2:03d}.html" if i + 1 < len(collected) else None
-        html_content = _make_html(title, paragraphs, next_filename)
+        # Fetch and embed the first image found, if any
+        image_uri = image_alt = None
+        if images:
+            image_uri = _fetch_image_b64(images[0][0])
+            image_alt = images[0][1]
+        html_content = _make_html(title, paragraphs, next_filename,
+                                   image_uri=image_uri, image_alt=image_alt or "")
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(html_content)
         saved_paths.append(os.path.abspath(filepath))

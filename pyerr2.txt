@@ -1,0 +1,8 @@
+W0000 00:00:1773281905.044206  176704 face_landmarker_graph.cc:180] Sets FaceBlendshapesGraph acceleration to xnnpack by default.
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+W0000 00:00:1773281905.058772  258772 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1773281905.066902  371504 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+Traceback (most recent call last):
+  File "C:\git\Eye-State-Detector\Eye_State_Detector.py", line 313, in <module>
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+KeyboardInterrupt
