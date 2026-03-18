@@ -2,7 +2,7 @@
 
 A real-time Eye State Detector using Mediapipe and OpenCV to identify whether eyes are open or closed from webcam footage.
 
-## 🔍 Features
+## Features
 - Real-time eye detection and blink tracking
 - Calculates Eye Aspect Ratio (EAR) for both eyes
 - Records detailed eye measurements (temporal/nasal distances, horizontal widths)
@@ -14,7 +14,7 @@ A real-time Eye State Detector using Mediapipe and OpenCV to identify whether ey
 - CSV data export with timestamps
 - Separate data folders for questionnaires and trivia results
 
-## 🧪 Experimental Design
+## Experimental Design
 
 This tool is designed for studying blinking behavior across different tasks. Each participant performs three tasks in a randomized order:
 
@@ -57,7 +57,7 @@ The task order code uses the first letter of each task name, shown in the order 
 - Tkinter (GUI launcher and task windows)
 - Pillow/PIL (image processing for video display)
 
-## 🚀 How to Run
+##  How to Run
 
 1. Clone the repository:
    ```bash
@@ -75,6 +75,7 @@ The task order code uses the first letter of each task name, shown in the order 
    ```bash
    pip install -r requirements.txt
    ```
+   You will also need VLC installed to play the video files
 
 4. Run the launcher:
    ```bash
