@@ -9,6 +9,7 @@ from collections import deque
 import cv2
 import mediapipe as mp
 import numpy as np
+from monitor_geometry import get_selected_monitor
 
 # ---------------------------------------------------------------------------
 # Landmark index constants
@@ -269,6 +270,7 @@ parser.add_argument("--name",     type=str, default="",  help="Participant name"
 parser.add_argument("--outdir",   type=str, default="",  help="Directory to save CSV")
 parser.add_argument("--order",    type=str, default="",  help="Task order code")
 parser.add_argument("--headless", action="store_true",   help="Run without preview window")
+parser.add_argument("--ipcdir",   type=str, default="",  help="Directory for IPC signal files (tracker.ready / tracker.cmd)")
 args, _ = parser.parse_known_args()
 
 USER_NAME  = args.name
@@ -324,8 +326,8 @@ _actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 _FOCAL_PX  = _update_focal_px(_actual_w)
 print(f"Camera: {_actual_w}×{_actual_h}  focal_px={_FOCAL_PX:.0f}", flush=True)
 
-READY_PATH   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker.ready")
-COMMAND_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker.cmd")
+READY_PATH   = os.path.join(args.ipcdir if args.ipcdir else os.path.dirname(os.path.abspath(__file__)), "tracker.ready")
+COMMAND_PATH = os.path.join(args.ipcdir if args.ipcdir else os.path.dirname(os.path.abspath(__file__)), "tracker.cmd")
 
 ready_written = False
 window_closed = False
@@ -333,6 +335,13 @@ window_closed = False
 if not HEADLESS:
     cv2.namedWindow("Eye State Detection", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Eye State Detection", 640, 480)
+    try:
+        _monitor = get_selected_monitor()
+        _wx = int(_monitor["work_x"] + max(0, (_monitor["work_width"] - 640) // 2))
+        _wy = int(_monitor["work_y"] + max(0, (_monitor["work_height"] - 480) // 2))
+        cv2.moveWindow("Eye State Detection", _wx, _wy)
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
 # State variables

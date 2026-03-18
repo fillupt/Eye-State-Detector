@@ -11,6 +11,12 @@ import time
 import tkinter as tk
 from tkinter import font, messagebox
 from datetime import datetime
+from monitor_geometry import set_tk_window_geometry
+
+
+def _set_task_window_geometry(window, width=1700, height=1000):
+    """Set task window geometry on the selected monitor with clamping."""
+    set_tk_window_geometry(window, width, height)
 
 
 class QuestionnaireWindow(tk.Toplevel):
@@ -41,13 +47,8 @@ class QuestionnaireWindow(tk.Toplevel):
         self.label_font = font.Font(family="Segoe UI", size=11)
         self.small_font = font.Font(family="Segoe UI", size=9)
         
-        # Size and center window - consistent 1400x800
-        self.geometry("1400x800")
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        x = (screen_w - 1400) // 2
-        y = (screen_h - 800) // 2
-        self.geometry(f"1400x800+{x}+{y}")
+        # Size and center window
+        _set_task_window_geometry(self, 1700, 1000)
         
         # Container for content that will be swapped
         self.content_container = tk.Frame(self, bg="#1f2937")
@@ -272,14 +273,14 @@ class QuestionnaireWindow(tk.Toplevel):
         header.pack(pady=(20, 10))
         
         # Instructions
-        instructions = tk.Label(
-            content,
-            text="Please answer the following questions about your eyes.",
-            bg="#1f2937",
-            fg="#cbd5e1",
-            font=self.label_font
-        )
-        instructions.pack(pady=(0, 20))
+        #instructions = tk.Label(
+        #    content,
+        #    text="Please answer the following questions about your eyes.",
+        #    bg="#1f2937",
+        #    fg="#cbd5e1",
+        #    font=self.label_font
+        #)
+        #instructions.pack(pady=(0, 20))
         
         # OSDI-6 Questions with proper groupings and headers
         # Symptoms and visual disturbance subscale
@@ -612,13 +613,8 @@ class TriviaMCQWindow(tk.Toplevel):
         self.small_font = font.Font(family="Segoe UI", size=9)
         self.large_font = font.Font(family="Segoe UI", size=16, weight="bold")
         
-        # Size and center window - 1400x800
-        self.geometry("1400x800")
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        x = (screen_w - 1400) // 2
-        y = (screen_h - 800) // 2
-        self.geometry(f"1400x800+{x}+{y}")
+        # Size and center window
+        _set_task_window_geometry(self, 1700, 1000)
         
         # Load questions
         self._load_questions()
@@ -1120,13 +1116,8 @@ class InteractiveTaskWindow(tk.Toplevel):
         self.small_font = font.Font(family="Segoe UI", size=9)
         self.large_font = font.Font(family="Segoe UI", size=16, weight="bold")
         
-        # Size and center window - consistent 1400x800
-        self.geometry("1400x800")
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        x = (screen_w - 1400) // 2
-        y = (screen_h - 800) // 2
-        self.geometry(f"1400x800+{x}+{y}")
+        # Size and center window
+        _set_task_window_geometry(self, 1700, 1000)
         
         # Main content container (swappable)
         self.content_container = tk.Frame(self, bg="#1f2937")
@@ -1326,6 +1317,51 @@ class InteractiveTaskWindow(tk.Toplevel):
         contact_btns[0].config(command=make_contact_cmd("Yes", contact_btns))
         contact_btns[1].config(command=make_contact_cmd("No", contact_btns))
 
+        # Q4: Glasses
+        glasses_frame = tk.Frame(content, bg="#1f2937")
+        glasses_frame.pack(pady=(0, 20), padx=40, fill="x")
+        tk.Label(
+            glasses_frame,
+            text="4. Are you wearing glasses?",
+            bg="#1f2937",
+            fg="#ffffff",
+            font=heading_font,
+            anchor="w"
+        ).pack(fill="x", pady=(0, 8))
+        self._glasses_var = tk.StringVar(value="")
+        glasses_row = tk.Frame(glasses_frame, bg="#1f2937")
+        glasses_row.pack(anchor="w", padx=4)
+        glasses_btns = []
+        for option in ("Yes", "No"):
+            btn = tk.Button(
+                glasses_row,
+                text=option,
+                font=self.label_font,
+                bg="#374151",
+                fg="#e5e7eb",
+                activebackground="#4b5563",
+                activeforeground="#ffffff",
+                relief="flat",
+                cursor="hand2",
+                padx=20,
+                pady=6
+            )
+            btn.pack(side="left", padx=(0, 8))
+            glasses_btns.append(btn)
+
+        def make_glasses_cmd(opt, btns):
+            def cmd():
+                self._glasses_var.set(opt)
+                if self.start_time:
+                    self.demographics_time["glasses"] = int((time.time() - self.start_time) * 1000)
+                for b in btns:
+                    b.config(bg="#374151", fg="#e5e7eb")
+                btns[0 if opt == "Yes" else 1].config(bg="#3b82f6", fg="#ffffff")
+            return cmd
+
+        glasses_btns[0].config(command=make_glasses_cmd("Yes", glasses_btns))
+        glasses_btns[1].config(command=make_glasses_cmd("No", glasses_btns))
+
         # Next button
         tk.Button(
             content,
@@ -1366,17 +1402,28 @@ class InteractiveTaskWindow(tk.Toplevel):
             )
             return
 
+        # Validate glasses selection
+        if not self._glasses_var.get():
+            messagebox.showwarning(
+                "Incomplete",
+                "Please indicate whether you are wearing glasses.",
+                parent=self
+            )
+            return
+
         # Ensure timestamps recorded for all fields
         now_ms = int((time.time() - self.start_time) * 1000) if self.start_time else 0
         self.demographics_time.setdefault("age", now_ms)
         self.demographics_time.setdefault("gender", now_ms)
         self.demographics_time.setdefault("contact_lenses", now_ms)
+        self.demographics_time.setdefault("glasses", now_ms)
 
         # Save responses
         self.demographics_responses = {
             "age": age,
             "gender": self._gender_var.get(),
-            "contact_lenses": self._contacts_var.get()
+            "contact_lenses": self._contacts_var.get(),
+            "glasses": self._glasses_var.get()
         }
         self.all_responses['demographics'] = self.demographics_responses.copy()
 
@@ -1621,10 +1668,36 @@ class InteractiveTaskWindow(tk.Toplevel):
         # Container frame
         container = tk.Frame(self.content_container, bg="#1f2937")
         container.pack(expand=True, fill="both")
-        
-        # Content frame (centered)
-        content = tk.Frame(container, bg="#1f2937")
-        content.pack(expand=True)
+
+        # Scrollable content so lower controls (including Next) remain reachable
+        canvas = tk.Canvas(container, bg="#1f2937", highlightthickness=0)
+        scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        content = tk.Frame(canvas, bg="#1f2937")
+        content_window = canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def _sync_scrollregion(_event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _sync_content_width(event):
+            canvas.itemconfigure(content_window, width=event.width)
+
+        def _bind_mousewheel(_event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        def _unbind_mousewheel(_event):
+            canvas.unbind_all("<MouseWheel>")
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        content.bind("<Configure>", _sync_scrollregion)
+        canvas.bind("<Configure>", _sync_content_width)
+        canvas.bind("<Enter>", _bind_mousewheel)
+        canvas.bind("<Leave>", _unbind_mousewheel)
         
         # Header
         header = tk.Label(
@@ -1690,6 +1763,7 @@ class InteractiveTaskWindow(tk.Toplevel):
             pady=8
         )
         submit_btn.pack(pady=20)
+        self.after(10, lambda: canvas.yview_moveto(0.0))
     
     def _add_osdi_section_header(self, parent, header_text):
         """Add a section header for OSDI questions"""
@@ -2113,7 +2187,7 @@ def test_full_interactive_task():
     
     # Second: Show trivia for remaining time
     total_task_duration = 300  # 5 minutes total
-    trivia_duration = max(60, total_task_duration - questionnaire_duration)  # At least 60 seconds
+    trivia_duration = max(10, total_task_duration - questionnaire_duration)  # At least 10 seconds
     
     print(f"Starting trivia task for {trivia_duration:.0f} seconds...")
     trivia = TriviaMCQWindow(
@@ -2136,10 +2210,9 @@ def test_unified_interactive():
     root.withdraw()
     
     print("Starting unified Interactive Task window...")
-    print("This will show: SANDE → OSDI-6 → MCQ Trivia all in one window")
     
     def on_ready():
-        print("Interactive window is ready - recording would start here")
+        print("Interactive window is ready")
     
     interactive = InteractiveTaskWindow(
         root,

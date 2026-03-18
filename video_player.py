@@ -10,6 +10,12 @@ import tkinter as tk
 from tkinter import font, messagebox
 import time
 import vlc
+from monitor_geometry import set_tk_window_geometry
+
+
+def _set_task_window_geometry(window, width=1600, height=1000):
+    """Set task window geometry on the selected monitor with clamping."""
+    set_tk_window_geometry(window, width, height)
 
 
 class VideoPlayerWindow(tk.Toplevel):
@@ -49,13 +55,8 @@ class VideoPlayerWindow(tk.Toplevel):
         # Fonts
         self.label_font = font.Font(family="Segoe UI", size=11)
         
-        # Size and position - use 1400x800 for consistency
-        self.geometry("1400x800")
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        x = (screen_w - 1400) // 2
-        y = (screen_h - 800) // 2
-        self.geometry(f"1400x800+{x}+{y}")
+        # Size and position
+        _set_task_window_geometry(self, 1660, 1000)
         
         # Main container
         main_frame = tk.Frame(self, bg="#000000")
@@ -63,7 +64,7 @@ class VideoPlayerWindow(tk.Toplevel):
         
         # Video display frame
         self.video_frame = tk.Frame(main_frame, bg="#000000")
-        self.video_frame.pack(expand=True, fill="both", padx=20, pady=20)
+        self.video_frame.pack(expand=True, fill="both", padx=10, pady=8)
         
         # Control frame at bottom
         control_frame = tk.Frame(self, bg="#1f2937")
@@ -77,11 +78,11 @@ class VideoPlayerWindow(tk.Toplevel):
             fg="#e5e7eb",
             font=self.label_font
         )
-        self.progress_label.pack(pady=10)
+        self.progress_label.pack(pady=6)
         
         # Control buttons
         btn_frame = tk.Frame(control_frame, bg="#1f2937")
-        btn_frame.pack(pady=(0, 10))
+        btn_frame.pack(pady=(0, 6))
         
         self.play_pause_btn = tk.Button(
             btn_frame,

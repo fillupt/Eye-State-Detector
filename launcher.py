@@ -7,6 +7,7 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, font, messagebox
+from monitor_geometry import set_tk_window_geometry, get_selected_monitor
 
 # Set DPI awareness once, before tkinter is initialised, so that all windows
 # (reading, video, questionnaire) share the same physical-pixel coordinate space.
@@ -20,7 +21,21 @@ except Exception:
         pass
 
 
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+# When frozen by PyInstaller, __file__ may point inside the _MEIPASS bundle dir.
+# Use sys.executable to get the directory containing the actual .exe.
+if getattr(sys, 'frozen', False):
+    ROOT_DIR = os.path.dirname(sys.executable)
+else:
+    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# --- PyInstaller subprocess routing ------------------------------------------
+# When frozen, subprocesses cannot be launched as "Blinker.exe script.py args".
+# Instead the exe re-launches itself with --eye-detector and is intercepted here
+# before any UI code runs.
+if getattr(sys, 'frozen', False) and '--eye-detector' in sys.argv:
+    sys.argv.remove('--eye-detector')
+    import Eye_State_Detector  # noqa: F401 — runs camera + main loop at module level
+    sys.exit(0)
 
 # Task order permutations (6 possible orders for 3 tasks)
 # Order number is determined by (file_count % 6)
@@ -50,6 +65,7 @@ class Launcher(tk.Tk):
         self.title("Blink or they're gone!")
         self.configure(bg="#1f2937")
         self.process = None
+        self._target_monitor = get_selected_monitor()
 
         # Center window — scale by DPI factor so the window is the same physical size
         # regardless of Windows display scaling (DPI awareness is set at process start).
@@ -151,11 +167,7 @@ class Launcher(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _center_window(self):
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        x = (screen_w // 2) - (self.width // 2)
-        y = (screen_h // 2) - (self.height // 2)
-        self.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        set_tk_window_geometry(self, self.width, self.height, self._target_monitor)
     
     def _send_tracker_command(self, command):
         """Send a command to the eye tracker via command file."""
@@ -192,7 +204,11 @@ class Launcher(tk.Tk):
         # Start process and begin polling for readiness
         name = self.name_var.get().strip()
         python_exe = find_python_executable()
-        cmd = [python_exe, os.path.join(ROOT_DIR, "Eye_State_Detector.py")]
+        if getattr(sys, 'frozen', False):
+            # Frozen exe: re-launch self with routing flag instead of passing a .py path
+            cmd = [python_exe, '--eye-detector', '--ipcdir', ROOT_DIR]
+        else:
+            cmd = [python_exe, os.path.join(ROOT_DIR, "Eye_State_Detector.py")]
         if name:
             cmd += ["--name", name]
         # Pass save directory if configured
@@ -472,7 +488,10 @@ class Launcher(tk.Tk):
             if self.process is None or self.process.poll() is not None:
                 # Start tracker in headless mode
                 python_exe = find_python_executable()
-                cmd = [python_exe, os.path.join(ROOT_DIR, "Eye_State_Detector.py"), "--headless"]
+                if getattr(sys, 'frozen', False):
+                    cmd = [python_exe, '--eye-detector', '--headless', '--ipcdir', ROOT_DIR]
+                else:
+                    cmd = [python_exe, os.path.join(ROOT_DIR, "Eye_State_Detector.py"), "--headless"]
                 if name:
                     cmd += ["--name", name]
                 if self.save_dir:
@@ -549,7 +568,7 @@ class Launcher(tk.Tk):
         dlg = tk.Toplevel(parent_win)
         dlg.title("Download Stories")
         dlg.configure(bg="#111827")
-        dlg.geometry("480x280")
+        set_tk_window_geometry(dlg, 720, 380, self._target_monitor)
         dlg.transient(parent_win)
         dlg.grab_set()
 
@@ -585,9 +604,32 @@ class Launcher(tk.Tk):
         out_entry = tk.Entry(dir_frame, textvariable=out_var, width=32, font=lf, state="readonly")
         out_entry.pack(side="left", padx=(6, 6))
         def _choose_out():
-            sel = filedialog.askdirectory(title="Save stories to", initialdir=self.save_dir or ROOT_DIR)
-            if sel:
-                out_var.set(os.path.join(sel, "stories"))
+            # Temporarily release modal grab before launching native folder picker.
+            # Some Windows builds can deadlock when a child dialog opens under active grab.
+            had_grab = False
+            try:
+                had_grab = dlg.grab_current() == dlg
+            except Exception:
+                had_grab = False
+
+            try:
+                if had_grab:
+                    dlg.grab_release()
+                sel = filedialog.askdirectory(
+                    parent=dlg,
+                    title="Save stories to",
+                    initialdir=self.save_dir or ROOT_DIR,
+                    mustexist=False,
+                )
+                if sel:
+                    out_var.set(os.path.join(sel, "stories"))
+            finally:
+                if had_grab and dlg.winfo_exists():
+                    try:
+                        dlg.grab_set()
+                        dlg.focus_force()
+                    except Exception:
+                        pass
         tk.Button(dir_frame, text="Browse...", command=_choose_out, bg="#374151", fg="#fff", relief="flat", padx=6).pack(side="left")
 
         # Progress label
@@ -778,25 +820,9 @@ class Launcher(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Setup — Task files and options")
         win.configure(bg="#111827")
-        win.geometry("660x370")
-        # center relative to main window
+        set_tk_window_geometry(win, 1040, 700, self._target_monitor)
+        win.minsize(920, 640)
         win.transient(self)
-        # Position the setup window centered over the main launcher window
-        try:
-            self.update_idletasks()
-            win.update_idletasks()
-            main_x = self.winfo_rootx()
-            main_y = self.winfo_rooty()
-            main_w = self.winfo_width()
-            main_h = self.winfo_height()
-            win_w = win.winfo_width()
-            win_h = win.winfo_height()
-            cx = main_x + max(0, (main_w - win_w) // 2)
-            cy = main_y + max(0, (main_h - win_h) // 2)
-            win.geometry(f"{win_w}x{win_h}+{cx}+{cy}")
-        except Exception:
-            # best-effort centering; ignore if window metrics aren't available
-            pass
 
         label_font = font.Font(family="Segoe UI", size=10)
 

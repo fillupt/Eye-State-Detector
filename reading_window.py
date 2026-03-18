@@ -4,22 +4,18 @@ import webview
 import tkinter as tk
 import threading
 import time
+from monitor_geometry import get_selected_monitor
 
 
 def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
                         save_dir=None, participant_name=None, order_code=None):
     # Window size and position
-    width, height = 1400, 800
+    width, height = 1400, 860
     bar_height = 40
     # Centering logic for Windows
-    import ctypes
     from ctypes import windll
 
-    # DPI awareness is set once at launcher startup; just read the current values.
-    user32 = windll.user32
-    # Get actual screen dimensions (not scaled)
-    screen_width = user32.GetSystemMetrics(0)
-    screen_height = user32.GetSystemMetrics(1)
+    monitor = get_selected_monitor()
 
     # Get DPI scaling factor
     try:
@@ -28,21 +24,30 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
     except:
         scale_factor = 1.0
 
-    print(f'Screen: {screen_width}x{screen_height}, Scale: {scale_factor}')
+    # pywebview expects logical coordinates while Tk timer placement uses physical coords.
+    logical_x = int(monitor['work_x'] / scale_factor)
+    logical_y = int(monitor['work_y'] / scale_factor)
+    logical_w = int(monitor['work_width'] / scale_factor)
+    logical_h = int(monitor['work_height'] / scale_factor)
 
-    # Center the webview window on screen
-    scaled_screen_width = int(screen_width / scale_factor)
-    scaled_screen_height = int(screen_height / scale_factor)
+    max_width = max(900, logical_w - 80)
+    max_height = max(600, logical_h - 120)
+    width = min(width, max_width)
+    height = min(height, max_height)
 
-    webview_left = int((scaled_screen_width - width) / 2)
-    webview_top = int((scaled_screen_height - height) / 2)
+    webview_left = logical_x + int((logical_w - width) / 2)
+    webview_top = logical_y + int((logical_h - height) / 2)
 
     # Timer bar positioned directly below webview
     timer_left = int(webview_left * scale_factor)
     timer_top = int((webview_top + height) * scale_factor) - 80
     timer_width = int(width * scale_factor) - 30  # Adjust for window borders
 
-    print(f'Screen: {scaled_screen_width}x{scaled_screen_height} (scaled), Webview: ({webview_left},{webview_top}), Timer: ({timer_left},{timer_top}) width={timer_width}')
+    print(
+        f"Monitor #{monitor['display_number']} ({monitor['work_x']},{monitor['work_y']}) "
+        f"{monitor['work_width']}x{monitor['work_height']}, Scale: {scale_factor}, "
+        f"Webview: ({webview_left},{webview_top}), Timer: ({timer_left},{timer_top}) width={timer_width}"
+    )
 
     # Shared state for timer and webview
     webview_window = None

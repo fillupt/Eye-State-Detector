@@ -5,6 +5,7 @@ from urllib.request import urlopen, Request
 from urllib.parse import urljoin
 from html.parser import HTMLParser
 import base64
+import sys
 
 _CSS = """
 html { zoom: 80%; }
@@ -91,13 +92,18 @@ class _StoryParser(HTMLParser):
         self._a_href = ""
         self._a_buf = []
 
+    @staticmethod
+    def _strip_query_fragment(url):
+        """Remove query string and fragment from a URL-like path for filename filtering."""
+        return (url or "").split("?", 1)[0].split("#", 1)[0]
+
     def handle_starttag(self, tag, attrs):
         self._depth += 1
         attrs_d = dict(attrs)
 
         if tag == "div" and self._content_div_depth is None:
-            classes = attrs_d.get("class", "").lower()
-            id_ = attrs_d.get("id", "").lower()
+            classes = str(attrs_d.get("class") or "").lower()
+            id_ = str(attrs_d.get("id") or "").lower()
             if any(k in classes + id_ for k in ("story", "content", "main", "text", "body")):
                 self._content_div_depth = self._depth
 
@@ -123,9 +129,14 @@ class _StoryParser(HTMLParser):
             self._a_buf = []
 
         if tag == "img":
-            src = attrs_d.get("src", "")
+            src = attrs_d.get("src", "") or attrs_d.get("data-src", "") or attrs_d.get("data-original", "")
+            srcset = attrs_d.get("srcset", "")
+            if not src and srcset:
+                first_srcset = srcset.split(",", 1)[0].strip()
+                src = first_srcset.split(" ", 1)[0].strip() if first_srcset else ""
             alt = attrs_d.get("alt", "")
-            fname = src.rsplit("/", 1)[-1].lower()
+            clean_src = self._strip_query_fragment(src)
+            fname = clean_src.rsplit("/", 1)[-1].lower()
             if src and fname not in self._SKIP_IMGS and not fname.startswith("logo"):
                 self.images.append((src, alt))
 
@@ -200,12 +211,66 @@ def _fetch_image_b64(url):
     try:
         req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urlopen(req, timeout=10) as resp:
-            content_type = resp.headers.get_content_type() or "image/jpeg"
+            content_type = resp.headers.get_content_type()
+            if not content_type or content_type == "application/octet-stream":
+                lower_url = url.lower()
+                if ".png" in lower_url:
+                    content_type = "image/png"
+                elif ".gif" in lower_url:
+                    content_type = "image/gif"
+                elif ".webp" in lower_url:
+                    content_type = "image/webp"
+                else:
+                    content_type = "image/jpeg"
             data = resp.read()
         b64 = base64.b64encode(data).decode("ascii")
         return f"data:{content_type};base64,{b64}"
-    except Exception:
+    except Exception as e:
+        print(f"[WARN] Failed to fetch image: {url} ({type(e).__name__}: {e})", file=sys.stderr)
         return None
+
+
+def _extract_hype_images(html_text, resolved_url):
+    """Extract default image candidates from Tumult Hype script-based graphics."""
+    candidates = []
+    script_pattern = re.compile(r'<script[^>]+src=["\']([^"\']*hype_generated_script\.js[^"\']*)["\']', re.I)
+    image_pattern = re.compile(r'([A-Za-z0-9_./-]+\.(?:jpg|jpeg|png|gif|webp))', re.I)
+
+    for m in script_pattern.finditer(html_text):
+        script_src = m.group(1)
+        script_url = urljoin(resolved_url, script_src)
+        script_url_clean = script_url.split("?", 1)[0].split("#", 1)[0]
+        script_base = script_url_clean.rsplit("/", 1)[0] + "/"
+        try:
+            script_text, _ = _fetch(script_url)
+        except Exception as e:
+            print(f"[WARN] Failed to fetch Hype script: {script_url} ({type(e).__name__}: {e})", file=sys.stderr)
+            continue
+
+        seen = set()
+        for img_match in image_pattern.finditer(script_text):
+            img_ref = img_match.group(1)
+            img_clean = img_ref.split("?", 1)[0].split("#", 1)[0]
+            fname = img_clean.rsplit("/", 1)[-1].lower()
+            if fname in _StoryParser._SKIP_IMGS or fname.startswith("logo"):
+                continue
+            if fname in seen:
+                continue
+            seen.add(fname)
+
+            if re.match(r'^https?://', img_ref, re.I):
+                img_url = img_ref
+            elif "/" in img_ref:
+                img_url = urljoin(resolved_url, img_ref)
+            else:
+                img_url = urljoin(script_base, img_ref)
+
+            candidates.append((img_url, "Interactive illustration"))
+
+        if candidates:
+            break
+
+    return candidates
 
 
 def _make_html(title, paragraphs, next_filename=None, image_uri=None, image_alt=""):
@@ -269,6 +334,8 @@ def download_stories(start_url, count, output_dir, progress_callback=None):
         paragraphs = parser.paragraphs or [("(No text found on this page.)", False)]
         next_href = parser.next_href
         images = [(urljoin(resolved_url, src), alt) for src, alt in parser.images]
+        if not images:
+            images = _extract_hype_images(html_text, resolved_url)
 
         collected.append((title, paragraphs, images, resolved_url))
 
@@ -290,11 +357,14 @@ def download_stories(start_url, count, output_dir, progress_callback=None):
         filename = f"story_{i + 1:03d}.html"
         filepath = os.path.join(output_dir, filename)
         next_filename = f"story_{i + 2:03d}.html" if i + 1 < len(collected) else None
-        # Fetch and embed the first image found, if any
+        # Try each extracted image in order and use the first that downloads successfully.
         image_uri = image_alt = None
         if images:
-            image_uri = _fetch_image_b64(images[0][0])
-            image_alt = images[0][1]
+            for img_url, img_alt in images:
+                image_uri = _fetch_image_b64(img_url)
+                if image_uri:
+                    image_alt = img_alt
+                    break
         html_content = _make_html(title, paragraphs, next_filename,
                                    image_uri=image_uri, image_alt=image_alt or "")
         with open(filepath, "w", encoding="utf-8") as f:

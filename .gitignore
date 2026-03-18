@@ -91,6 +91,10 @@ env.bak/
 venv.bak/
 eye-env/
 
+# PyInstaller build output (standard out-of-repo locations)
+../Blinker-dist/
+../Blinker-build/
+
 # Spyder project settings
 .spyderproject
 .spyproject
