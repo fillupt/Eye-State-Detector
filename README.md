@@ -1,37 +1,33 @@
 # 👁️ Eye State Detector
 
-A real-time Eye State Detector using Mediapipe and OpenCV to identify whether eyes are open or closed from webcam footage.
+A real-time Eye State Detector using Mediapipe and OpenCV to track blinking behaviours from webcam footage.
 
 ## Features
 - Real-time eye detection and blink tracking
 - Calculates Eye Aspect Ratio (EAR) for both eyes
 - Records detailed eye measurements (temporal/nasal distances, horizontal widths)
-- Visualizes eye landmarks on zoomed, stabilized video feed
+- Visualizes eye landmarks on zoomed, stabilised video feed
 - GUI launcher with automated task order assignment
 - **SANDE and OSDI-6 dry eye questionnaires** with touch-friendly UI
-- **Trivia MCQ task** with randomized questions and choice shuffling (330 questions)
+- **Trivia MCQ task** with randomized questions and choice shuffling
 - **Video playback** with OpenCV-based player
 - CSV data export with timestamps
-- Separate data folders for questionnaires and trivia results
+
 
 ## Experimental Design
 
-This tool is designed for studying blinking behavior across different tasks. Each participant performs three tasks in a randomized order:
+This tool is designed for studying blinking behavior across different tasks. Each participant performs three tasks in a randomised order:
 
-1. **Reading Task** - Participant reads text (implementation in progress)
+1. **Reading Task** - Participant reads stories
 2. **Video Task** - Participant watches a video with OpenCV-based video player
-3. **Interactive Task** - Participant completes:
-   - SANDE questionnaire (2 visual analog scales for frequency and severity)
-   - OSDI-6 dry eye questionnaire (6 questions, official version)
-   - Trivia MCQ questions (one at a time, with countdown timer and score tracking)
+3. **Interactive Task** - Participant completes dry eye instruments then MCQs to fill the time
+   - SANDE questionnaire
+   - OSDI-6 dry eye questionnaire
+   - Trivia MCQ questions
 
 ### Task Order Assignment
 
 To balance task order effects, the program automatically assigns one of 6 possible task orders based on the number of existing data files. The order is calculated as `(number of existing CSV files) % 6`, ensuring roughly equal distribution across all permutations as more participants are tested.
-
-**Participant Blinding**: Only the three-letter code is displayed in the UI (e.g., "Task Order: RVI"), without revealing the actual task sequence to participants.
-
-### Letter Code Mapping
 
 The task order code uses the first letter of each task name, shown in the order they will be performed:
 
@@ -44,14 +40,9 @@ The task order code uses the first letter of each task name, shown in the order 
 | **IRV** | Interactive → Reading → Video | `file_count % 6 = 4` |
 | **IVR** | Interactive → Video → Reading | `file_count % 6 = 5` |
 
-**Where it appears:**
-- Launcher home screen: "Task Order: RVI"
-- Setup window: "Task Order: RVI"
-- CSV filename: `20251104T1430-JohnDoe-RVI.csv`
-
 ## 🛠️ Technologies
 - Python 3.12
-- OpenCV (webcam capture, visualization, and video playback)
+- OpenCV (webcam capture, visualiistion, and video playback)
 - Mediapipe (face mesh landmark detection)
 - NumPy (geometric calculations)
 - Tkinter (GUI launcher and task windows)
@@ -75,7 +66,7 @@ The task order code uses the first letter of each task name, shown in the order 
    ```bash
    pip install -r requirements.txt
    ```
-   You will also need VLC installed to play the video files
+   Note: You will also need VLC installed to play the video files
 
 4. Run the launcher:
    ```bash
@@ -88,11 +79,10 @@ The task order code uses the first letter of each task name, shown in the order 
      - Reading task file (text/PDF)
      - Video task file (MP4, AVI, MOV, etc.)
      - Interactive task file (trivia JSON - defaults to `trivia_general_knowledge.json`)
-     - SANDE/OSDI-6 questionnaire options (checkboxes)
+     - SANDE/OSDI-6 questionnaire options
      - Task duration (1-15 minutes)
    - Enter participant name
    - Click **Start** to begin recording
-   - Task order is automatically assigned based on existing files
 
 ## 📊 Output Format
 
