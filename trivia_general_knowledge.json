@@ -4549,18 +4549,6 @@
         "Absorption"
       ],
       "correct": 2
-    },
-    {
-      "id": 380,
-      "question": "What is the smallest planet in our solar system?",
-      "choices": [
-        "Mars",
-        "Mercury",
-        "Venus",
-        "Pluto",
-        "Neptune"
-      ],
-      "correct": 1
     }
   ]
 }
