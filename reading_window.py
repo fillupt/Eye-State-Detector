@@ -10,7 +10,7 @@ from monitor_geometry import get_selected_monitor
 def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
                         save_dir=None, participant_name=None, order_code=None):
     # Window size and position
-    width, height = 1400, 860
+    width, height = 1600, 1000
     bar_height = 40
     # Centering logic for Windows
     from ctypes import windll

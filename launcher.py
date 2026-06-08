@@ -48,6 +48,8 @@ TASK_ORDERS = {
     5: ["Interactive", "Video", "Reading"],
 }
 
+DEFAULT_PARTICIPANT_NAME = "blinkr"
+
 
 def get_order_code(task_list):
     """Convert task list to letter code (e.g., ['Reading', 'Video', 'Interactive'] -> 'RVI')"""
@@ -62,7 +64,7 @@ def find_python_executable():
 class Launcher(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Blink or they're gone!")
+        self.title("Blinkr")
         self.configure(bg="#1f2937")
         self.process = None
         self._target_monitor = get_selected_monitor()
@@ -78,13 +80,40 @@ class Launcher(tk.Tk):
         self.width  = int(420 * _scale)
         self.height = int(340 * _scale)
         self._center_window()
+        # Remove native window chrome (title bar, min/max/close buttons).
+        self.overrideredirect(True)
 
         # Styling
         header_font = font.Font(family="Segoe UI", size=16, weight="bold")
         label_font = font.Font(family="Segoe UI", size=11)
 
-        header = tk.Label(self, text="Blink or they're gone!", bg="#1f2937", fg="#ffffff", font=header_font)
-        header.pack(pady=(14, 6))
+        # Try to render the launcher logo; fall back to text header if unavailable.
+        self.logo_image = None
+        logo_path = os.path.join(ROOT_DIR, "Blinkr logo.png")
+        if os.path.exists(logo_path):
+            try:
+                logo = tk.PhotoImage(file=logo_path)
+                max_w, max_h = 240, 120
+                scale = max(logo.width() / max_w, logo.height() / max_h, 1)
+                if scale > 1:
+                    scale_int = int(scale + 0.999)
+                    logo = logo.subsample(scale_int, scale_int)
+                self.logo_image = logo
+            except Exception as e:
+                print(f"[WARN] Failed to load launcher logo: {e}", file=sys.stderr)
+
+        logo_panel = tk.Frame(self, bg="#ffffff", height=120)
+        logo_panel.pack(fill="x", pady=(14, 20))
+        if self.logo_image is not None:
+            header = tk.Label(logo_panel, image=self.logo_image, bg="#ffffff")
+        else:
+            header = tk.Label(logo_panel, text="Blinkr", bg="#ffffff", fg="#1f2937", font=header_font)
+        header.pack(expand=True)
+        # Allow dragging the frameless launcher by the white logo strip.
+        logo_panel.bind("<ButtonPress-1>", self._start_window_drag)
+        logo_panel.bind("<B1-Motion>", self._do_window_drag)
+        header.bind("<ButtonPress-1>", self._start_window_drag)
+        header.bind("<B1-Motion>", self._do_window_drag)
 
         sub = tk.Label(self, text="Enter subject ID", bg="#1f2937", fg="#cbd5e1", font=label_font)
         sub.pack(pady=(0, 10))
@@ -92,13 +121,13 @@ class Launcher(tk.Tk):
         entry_frame = tk.Frame(self, bg="#1f2937")
         entry_frame.pack(pady=(0, 8))
 
-        self.name_var = tk.StringVar()
+        self.name_var = tk.StringVar(value=DEFAULT_PARTICIPANT_NAME)
         name_entry = tk.Entry(entry_frame, textvariable=self.name_var, width=30, font=label_font)
         name_entry.pack(ipady=6, padx=6)
         name_entry.focus()
 
         btn_frame = tk.Frame(self, bg="#1f2937")
-        btn_frame.pack(pady=(4, 6))
+        btn_frame.pack(pady=(20, 14))
 
         # Preview button (toggle eye tracker with window for verification)
         self.preview_btn = tk.Button(btn_frame, text="Preview", command=self.toggle_preview, bg="#3b82f6", fg="#fff", padx=12, pady=8, relief="flat", font=label_font)
@@ -123,7 +152,7 @@ class Launcher(tk.Tk):
         self.sande = False
         self.osdi6 = False
         self.demographics = True
-        self.last_name = ""
+        self.last_name = DEFAULT_PARTICIPANT_NAME
         self.save_dir = ""
         self.duration_minutes = 5  # Default 5 minutes
         self.task_order_override = None  # None = auto-calculate; int 0-5 = manual override
@@ -168,6 +197,17 @@ class Launcher(tk.Tk):
 
     def _center_window(self):
         set_tk_window_geometry(self, self.width, self.height, self._target_monitor)
+
+    def _start_window_drag(self, event):
+        self._drag_start_x = event.x_root
+        self._drag_start_y = event.y_root
+        self._window_start_x = self.winfo_x()
+        self._window_start_y = self.winfo_y()
+
+    def _do_window_drag(self, event):
+        dx = event.x_root - self._drag_start_x
+        dy = event.y_root - self._drag_start_y
+        self.geometry(f"+{self._window_start_x + dx}+{self._window_start_y + dy}")
     
     def _send_tracker_command(self, command):
         """Send a command to the eye tracker via command file."""
@@ -189,16 +229,26 @@ class Launcher(tk.Tk):
         return f"{timestamp_str}{name_suffix}{order_suffix}-{task_suffix}.csv"
     
     def _calculate_task_order(self):
-        """Count existing CSV files in save directory and return order number (0-5)."""
+        """Estimate completed trials from tracker CSVs and return order number (0-5)."""
         if not self.save_dir or not os.path.isdir(self.save_dir):
             return 0
-        
-        # Count CSV files matching the pattern YYYYMMDDTHHMM-*.csv
-        csv_files = glob.glob(os.path.join(self.save_dir, "*-*.csv"))
-        file_count = len(csv_files)
-        
-        print(f"[DEBUG] Found {file_count} existing CSV files, order = {file_count % 6}", file=sys.stderr)
-        return file_count % 6
+
+        # Only count canonical eye-tracker task files in the save_dir root.
+        # One completed trial produces 3 task CSVs: -R.csv, -V.csv, -I.csv.
+        csv_files = glob.glob(os.path.join(self.save_dir, "*.csv"))
+        tracker_task_files = [
+            p for p in csv_files
+            if os.path.splitext(p)[0].upper().endswith(("-R", "-V", "-I"))
+        ]
+        completed_trials = len(tracker_task_files) // 3
+        order_num = completed_trials % 6
+
+        print(
+            f"[DEBUG] Found {len(tracker_task_files)} tracker task CSVs "
+            f"(~{completed_trials} completed trials), order = {order_num}",
+            file=sys.stderr,
+        )
+        return order_num
 
     def start_tracker(self):
         # Start process and begin polling for readiness
@@ -286,7 +336,7 @@ class Launcher(tk.Tk):
                 self.sande = bool(data.get("sande", False))
                 self.osdi6 = bool(data.get("osdi6", False))
                 self.demographics = bool(data.get("demographics", True))
-                self.last_name = data.get("last_name", "") or ""
+                self.last_name = data.get("last_name", DEFAULT_PARTICIPANT_NAME) or DEFAULT_PARTICIPANT_NAME
                 # Load duration with proper type conversion
                 duration_val = data.get("duration_minutes", 5)
                 try:
@@ -299,8 +349,8 @@ class Launcher(tk.Tk):
                     # Use a flag to save after __init__ completes
                     self._needs_config_save = True
                 
-                if self.last_name:
-                    self.name_var.set(self.last_name)
+                # Always start from a neutral default to avoid accidental ID reuse.
+                self.name_var.set(DEFAULT_PARTICIPANT_NAME)
                 
                 print(f"[DEBUG] Config loaded - sande={self.sande}, osdi6={self.osdi6}, duration={self.duration_minutes}", file=sys.stderr)
         except Exception as e:
@@ -325,7 +375,7 @@ class Launcher(tk.Tk):
                 "sande": bool(self.sande),
                 "osdi6": bool(self.osdi6),
                 "demographics": bool(self.demographics),
-                "last_name": self.name_var.get().strip(),
+                "last_name": DEFAULT_PARTICIPANT_NAME,
                 "duration_minutes": duration,
             }
             
@@ -461,13 +511,6 @@ class Launcher(tk.Tk):
             messagebox.showwarning("No Tasks", "Please configure at least one task in Setup before starting.")
             return
         
-        # Save last name
-        try:
-            self.last_name = name
-            self._save_config()
-        except Exception:
-            pass
-        
         # Disable buttons during experiment
         self.start_btn.config(state="disabled")
         self.preview_btn.config(state="disabled")
@@ -475,6 +518,17 @@ class Launcher(tk.Tk):
         # Start the experiment sequence
         self._run_experiment_sequence()
     
+    def _advance_task_order(self):
+        """Advance to the next task order for the next participant (auto mode only)."""
+        if self.task_order_override is not None:
+            # Respect manual override from Setup.
+            self.task_order_num = self.task_order_override
+        else:
+            self.task_order_num = (self.task_order_num + 1) % len(TASK_ORDERS)
+        self.task_order = TASK_ORDERS[self.task_order_num]
+        self.task_order_code = get_order_code(self.task_order)
+        self.order_label.config(text=f"Task Order: {self.task_order_code}")
+
     def _run_experiment_sequence(self):
         """Run the experiment tasks in sequence."""
         try:
@@ -538,15 +592,25 @@ class Launcher(tk.Tk):
                 score_line = f"\n\nYou got {trivia_score} of {trivia_total} ({pct:.1f}%) of the trivia questions correct!"
             else:
                 score_line = ""
-            messagebox.showinfo("Complete", f"Experiment completed successfully!{score_line}")
+
+            # Prepare launcher state for the next participant.
+            completed_name = name
+            self._advance_task_order()
+            self.name_var.set(DEFAULT_PARTICIPANT_NAME)
+
+            messagebox.showinfo(
+                "Complete",
+                f"Experiment completed successfully!\n\nParticipant: {completed_name}{score_line}"
+            )
             
         except Exception as e:
             messagebox.showerror("Error", f"Error during experiment:\n{e}")
             self.status_label.config(text="Status: Error", fg="#fca5a5")
         finally:
-            # Re-enable buttons
-            self.start_btn.config(state="normal")
-            self.preview_btn.config(state="normal")
+            # Reset preview verification state - user must re-run preview before next experiment
+            self._preview_verified = False
+            self.start_btn.config(state="disabled", bg="#6b7280", fg="#d1d5db")
+            self.preview_btn.config(state="normal", bg="#3b82f6", fg="#fff", text="Preview")
     
     def _stories_default_dir(self):
         """Return the directory where stories are (or will be) saved."""
@@ -807,13 +871,28 @@ class Launcher(tk.Tk):
 
 
     def on_close(self):
-        # Stop child process if running
+        # Prevent re-entrant close requests.
+        if getattr(self, "_closing", False):
+            return
+        self._closing = True
+
+        # Stop child process if running.
         if self.process is not None and self.process.poll() is None:
             if messagebox.askyesno("Quit", "Tracker is running. Stop it and quit?"):
                 self.stop_tracker()
             else:
+                self._closing = False
                 return
-        self.destroy()
+
+        # Ensure Tk event loop exits and terminal prompt returns.
+        try:
+            self.quit()
+        except Exception:
+            pass
+        try:
+            self.destroy()
+        except Exception:
+            pass
 
     # --- Setup window implementation -------------------------------------------------
     def open_setup_window(self):
@@ -1137,3 +1216,4 @@ class Launcher(tk.Tk):
 if __name__ == "__main__":
     app = Launcher()
     app.mainloop()
+    sys.exit(0)

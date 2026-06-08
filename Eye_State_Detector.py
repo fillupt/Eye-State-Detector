@@ -164,7 +164,7 @@ def compute_eyelid_apertures(landmarks, w: int, h: int) -> dict:
 # Formula: dist_cm = (FOCAL_PX × IOD_AVG_MM) / (iod_px × 10)
 _IOD_AVG_MM      = 63.0   # average adult inter-pupillary distance (mm)
 _FOCAL_PX        = 500.0  # updated at runtime from actual capture width
-_CAMERA_HFOV_DEG = 70.0   # BRIO 4K horizontal FOV at 16:9 modes (~70°)
+_CAMERA_HFOV_DEG = 85.0   # BRIO 4K ~70, MX BRIO ~85 both in 16:9 mode.
 
 
 def _update_focal_px(capture_width: int) -> float:

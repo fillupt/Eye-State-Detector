@@ -1219,26 +1219,48 @@ class InteractiveTaskWindow(tk.Toplevel):
             font=heading_font,
             anchor="w"
         ).pack(fill="x", pady=(0, 8))
-        self._age_var = tk.StringVar()
+        self._age_var = tk.StringVar(value="25")
 
-        def _validate_age(new_val):
-            return new_val == "" or (new_val.isdigit() and not new_val.startswith("0"))
+        age_controls = tk.Frame(age_frame, bg="#1f2937")
+        age_controls.pack(anchor="w", padx=4)
 
-        vcmd = (self.register(_validate_age), "%P")
-        age_entry = tk.Entry(
-            age_frame,
+        age_value_label = tk.Label(
+            age_controls,
             textvariable=self._age_var,
-            font=self.label_font,
-            bg="#374151",
+            bg="#111827",
             fg="#ffffff",
-            insertbackground="#ffffff",
-            relief="flat",
-            width=10,
-            justify="center",
-            validate="key",
-            validatecommand=vcmd
+            font=("Segoe UI", 14, "bold"),
+            width=5,
+            padx=14,
+            pady=8
         )
-        age_entry.pack(anchor="w", ipady=6, padx=4)
+        age_value_label.pack(side="left", padx=(0, 12))
+
+        def _adjust_age(delta):
+            try:
+                current_age = int(self._age_var.get())
+            except ValueError:
+                current_age = 25
+            # Clamp to questionnaire validation bounds.
+            new_age = max(1, min(120, current_age + delta))
+            self._age_var.set(str(new_age))
+
+        for delta in (-5, -1, 1, 5):
+            age_btn = tk.Button(
+                age_controls,
+                text=f"{delta:+d}",
+                font=self.label_font,
+                bg="#374151",
+                fg="#e5e7eb",
+                activebackground="#4b5563",
+                activeforeground="#ffffff",
+                relief="flat",
+                cursor="hand2",
+                padx=18,
+                pady=8,
+                command=lambda d=delta: _adjust_age(d)
+            )
+            age_btn.pack(side="left", padx=(0, 8))
 
         def _on_age_change(*args):
             if self.start_time:
@@ -1258,14 +1280,37 @@ class InteractiveTaskWindow(tk.Toplevel):
         ).pack(fill="x", pady=(0, 8))
         gender_options = ["Prefer not to say", "Male", "Female", "Non-binary", "Other"]
         self._gender_var = tk.StringVar(value=gender_options[0])
-        gender_menu = tk.OptionMenu(gender_frame, self._gender_var, *gender_options)
-        gender_menu.config(
-            bg="#374151", fg="#ffffff", activebackground="#4b5563",
-            activeforeground="#ffffff", relief="flat", font=self.label_font,
-            highlightthickness=0
-        )
-        gender_menu["menu"].config(bg="#374151", fg="#ffffff", font=self.label_font)
-        gender_menu.pack(anchor="w", padx=4)
+        gender_buttons_frame = tk.Frame(gender_frame, bg="#1f2937")
+        gender_buttons_frame.pack(anchor="w", padx=4)
+        self._gender_buttons = {}
+
+        def _select_gender(option):
+            self._gender_var.set(option)
+            for opt, btn in self._gender_buttons.items():
+                if opt == option:
+                    btn.config(bg="#3b82f6", fg="#ffffff")
+                else:
+                    btn.config(bg="#374151", fg="#e5e7eb")
+
+        for option in gender_options:
+            btn = tk.Button(
+                gender_buttons_frame,
+                text=option,
+                font=self.label_font,
+                bg="#374151",
+                fg="#e5e7eb",
+                activebackground="#4b5563",
+                activeforeground="#ffffff",
+                relief="flat",
+                cursor="hand2",
+                padx=14,
+                pady=8,
+                command=lambda opt=option: _select_gender(opt)
+            )
+            btn.pack(side="left", padx=(0, 8))
+            self._gender_buttons[option] = btn
+
+        _select_gender(self._gender_var.get())
 
         def _on_gender_change(*args):
             if self.start_time:
