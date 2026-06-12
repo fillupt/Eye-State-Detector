@@ -1,0 +1,16 @@
+cycle,task,status,elapsed_seconds,detail
+1,reading,PASS,20.327,completed
+1,video,PASS,31.630,completed
+1,interactive,PASS,20.182,completed
+2,reading,PASS,19.771,completed
+2,video,PASS,15.870,completed
+2,interactive,PASS,20.138,completed
+3,reading,PASS,19.400,completed
+3,video,PASS,15.827,completed
+3,interactive,PASS,20.138,completed
+4,reading,PASS,19.729,completed
+4,video,PASS,15.806,completed
+4,interactive,PASS,20.141,completed
+5,reading,PASS,19.718,completed
+5,video,PASS,15.804,completed
+5,interactive,PASS,20.132,completed

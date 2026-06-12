@@ -51,12 +51,18 @@ class VideoPlayerWindow(tk.Toplevel):
         self.is_paused = False
         self.start_time = None
         self.timer_check_id = None
+        self._destroyed = False
         
         # Fonts
         self.label_font = font.Font(family="Segoe UI", size=11)
         
         # Size and position
         _set_task_window_geometry(self, 1660, 1000)
+        # Ensure task window appears on top at start.
+        self.attributes("-topmost", True)
+        self.after(1200, lambda: self.attributes("-topmost", False))
+        self.lift()
+        self.focus_force()
         
         # Main container
         main_frame = tk.Frame(self, bg="#000000")
@@ -137,8 +143,11 @@ class VideoPlayerWindow(tk.Toplevel):
         
         try:
             # Create VLC instance and player
-            self.instance = vlc.Instance('--no-xlib')  # '--no-xlib' for Linux compatibility
-            self.player = self.instance.media_player_new()
+            inst = vlc.Instance('--no-xlib')  # '--no-xlib' for Linux compatibility
+            if inst is None:
+                raise RuntimeError('Failed to initialize VLC instance')
+            self.instance = inst
+            self.player = inst.media_player_new()
             
             # Set the window handle for video output
             if platform.system() == 'Windows':
@@ -149,7 +158,7 @@ class VideoPlayerWindow(tk.Toplevel):
                 self.player.set_xwindow(self.video_frame.winfo_id())
             
             # Load media
-            media = self.instance.media_new(self.video_file)
+            media = inst.media_new(self.video_file)
             self.player.set_media(media)
             
             # Parse media to get duration
@@ -208,12 +217,15 @@ class VideoPlayerWindow(tk.Toplevel):
     
     def check_progress(self):
         """Check playback progress and update UI"""
-        if not self.is_playing or not self.player:
+        if self._destroyed or not self.winfo_exists() or not self.is_playing or not self.player:
             return
         
-        # Get current time and length
-        current_time = self.player.get_time() / 1000  # Convert ms to seconds
-        length = self.player.get_length() / 1000  # Convert ms to seconds
+        try:
+            # Get current time and length
+            current_time = self.player.get_time() / 1000  # Convert ms to seconds
+            length = self.player.get_length() / 1000  # Convert ms to seconds
+        except Exception:
+            return
         
         if length > 0:
             progress = (current_time / length) * 100
@@ -234,8 +246,11 @@ class VideoPlayerWindow(tk.Toplevel):
         self.progress_label.config(text=progress_text)
         
         # Check if video ended
-        state = self.player.get_state()
-        if state == vlc.State.Ended:
+        try:
+            state = self.player.get_state()
+        except Exception:
+            return
+        if str(state).endswith('Ended'):
             self.stop_video()
             return
         
@@ -244,7 +259,7 @@ class VideoPlayerWindow(tk.Toplevel):
     
     def stop_video(self):
         """Stop video playback"""
-        if not self.player:
+        if self._destroyed or not self.player:
             return
         
         self.is_playing = False
@@ -257,16 +272,12 @@ class VideoPlayerWindow(tk.Toplevel):
             self.after_cancel(self.timer_check_id)
             self.timer_check_id = None
         
-        elapsed = time.time() - self.start_time if self.start_time else 0
-        self.progress_label.config(
-            text=f"Video stopped. Total time watched: {elapsed:.1f}s"
-        )
-        
-        # Allow closing
         self.destroy()
     
     def on_close_attempt(self):
         """Handle window close attempt"""
+        if self._destroyed:
+            return
         if self.is_playing:
             response = messagebox.askyesno(
                 "Stop Video?",
@@ -277,6 +288,39 @@ class VideoPlayerWindow(tk.Toplevel):
                 self.stop_video()
         else:
             self.destroy()
+
+    def destroy(self):
+        """Ensure callbacks and VLC resources are released exactly once."""
+        if self._destroyed:
+            return
+        self._destroyed = True
+
+        if self.timer_check_id:
+            try:
+                self.after_cancel(self.timer_check_id)
+            except Exception:
+                pass
+            self.timer_check_id = None
+
+        if self.player:
+            try:
+                self.player.stop()
+            except Exception:
+                pass
+            try:
+                self.player.release()
+            except Exception:
+                pass
+            self.player = None
+
+        if self.instance:
+            try:
+                self.instance.release()
+            except Exception:
+                pass
+            self.instance = None
+
+        super().destroy()
     
     def __del__(self):
         """Cleanup when window is destroyed"""

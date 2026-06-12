@@ -49,6 +49,11 @@ class QuestionnaireWindow(tk.Toplevel):
         
         # Size and center window
         _set_task_window_geometry(self, 1700, 1000)
+        # Ensure task window appears on top at start.
+        self.attributes("-topmost", True)
+        self.after(1200, lambda: self.attributes("-topmost", False))
+        self.lift()
+        self.focus_force()
         
         # Container for content that will be swapped
         self.content_container = tk.Frame(self, bg="#1f2937")
@@ -603,6 +608,8 @@ class TriviaMCQWindow(tk.Toplevel):
         self.total_shown = 0
         self.start_time = None
         self.responses = []  # Store all responses for later analysis
+        self.timer_after_id = None
+        self._completion_started = False
         
         self.title("Interactive Task - Trivia Questions")
         self.configure(bg="#1f2937")
@@ -843,6 +850,8 @@ class TriviaMCQWindow(tk.Toplevel):
         is_correct = (user_answer == self.current_correct_index)
         if is_correct:
             self.score += 1
+
+        started_at = self.start_time if self.start_time is not None else time.time()
         
         # Store response
         self.responses.append({
@@ -852,14 +861,14 @@ class TriviaMCQWindow(tk.Toplevel):
             'correct_answer_position': self.current_correct_index,
             'original_correct_index': original_correct,
             'is_correct': is_correct,
-            'timestamp': time.time() - self.start_time
+            'timestamp': time.time() - started_at
         })
         
         self.total_shown += 1
         self.current_question_index += 1
         
         # Check if time is up
-        elapsed = time.time() - self.start_time
+        elapsed = time.time() - started_at
         if elapsed >= self.duration_seconds:
             self._show_completion()
         else:
@@ -872,14 +881,14 @@ class TriviaMCQWindow(tk.Toplevel):
     
     def _update_timer(self):
         """Update the progress bar and check if time is up"""
-        if not self.start_time:
+        if self._completion_started or not self.start_time or not self.winfo_exists():
             return
         
         elapsed = time.time() - self.start_time
         remaining = max(0, self.duration_seconds - elapsed)
         
         # Update progress bar width
-        progress_ratio = remaining / self.duration_seconds
+        progress_ratio = (remaining / self.duration_seconds) if self.duration_seconds > 0 else 0
         self.progress_bar.place(x=0, y=0, relwidth=progress_ratio, relheight=1.0)
         
         # Update time text
@@ -893,10 +902,21 @@ class TriviaMCQWindow(tk.Toplevel):
             return
         
         # Schedule next update (smooth animation)
-        self.after(100, self._update_timer)
+        self.timer_after_id = self.after(100, self._update_timer)
     
     def _show_completion(self):
         """Show completion screen with final score"""
+        if self._completion_started:
+            return
+        self._completion_started = True
+
+        if self.timer_after_id:
+            try:
+                self.after_cancel(self.timer_after_id)
+            except Exception:
+                pass
+            self.timer_after_id = None
+
         # Stop timer updates
         self.start_time = None
         
@@ -1035,6 +1055,8 @@ class TriviaMCQWindow(tk.Toplevel):
     
     def on_close_attempt(self):
         """Handle window close attempt"""
+        if self._completion_started:
+            return
         response = messagebox.askyesno(
             "Exit Task?",
             "Are you sure you want to exit the trivia task?\n\nYour progress will be saved.",
@@ -1043,6 +1065,16 @@ class TriviaMCQWindow(tk.Toplevel):
         
         if response:
             self._show_completion()
+
+    def destroy(self):
+        """Cancel scheduled callbacks before destroying the trivia window."""
+        if self.timer_after_id:
+            try:
+                self.after_cancel(self.timer_after_id)
+            except Exception:
+                pass
+            self.timer_after_id = None
+        super().destroy()
 
 
 class InteractiveTaskWindow(tk.Toplevel):
@@ -1076,6 +1108,8 @@ class InteractiveTaskWindow(tk.Toplevel):
         self.current_section = None  # "sande", "osdi", or "trivia"
         self.completed = False
         self.start_time = None
+        self.timer_after_id = None
+        self._completion_started = False
         
         # Demographics state
         self.demographics_responses = {}
@@ -2067,6 +2101,17 @@ class InteractiveTaskWindow(tk.Toplevel):
     
     def _show_completion(self):
         """Complete the task and close window immediately"""
+        if self._completion_started:
+            return
+        self._completion_started = True
+
+        if self.timer_after_id:
+            try:
+                self.after_cancel(self.timer_after_id)
+            except Exception:
+                pass
+            self.timer_after_id = None
+
         # Save all responses to single CSV
         self._save_all_responses()
         
@@ -2132,7 +2177,7 @@ class InteractiveTaskWindow(tk.Toplevel):
     
     def _update_timer(self):
         """Update the progress bar and timer"""
-        if not self.start_time:
+        if self._completion_started or not self.start_time or not self.winfo_exists():
             return
         
         elapsed = time.time() - self.start_time
@@ -2154,15 +2199,23 @@ class InteractiveTaskWindow(tk.Toplevel):
             return
         
         # Schedule next update (smooth animation)
-        self.after(100, self._update_timer)
+        self.timer_after_id = self.after(100, self._update_timer)
     
     def _complete_and_close(self):
         """Mark as completed and close window"""
+        if self.timer_after_id:
+            try:
+                self.after_cancel(self.timer_after_id)
+            except Exception:
+                pass
+            self.timer_after_id = None
         self.completed = True
         self.destroy()
     
     def on_close_attempt(self):
         """Handle window close attempt"""
+        if self._completion_started:
+            return
         response = messagebox.askyesno(
             "Exit Task?",
             "Are you sure you want to exit?",
@@ -2171,6 +2224,16 @@ class InteractiveTaskWindow(tk.Toplevel):
         
         if response:
             self._show_completion()
+
+    def destroy(self):
+        """Cancel scheduled callbacks before destroying the interactive task window."""
+        if self.timer_after_id:
+            try:
+                self.after_cancel(self.timer_after_id)
+            except Exception:
+                pass
+            self.timer_after_id = None
+        super().destroy()
 
 
 # Test function
@@ -2232,7 +2295,7 @@ def test_full_interactive_task():
     
     # Second: Show trivia for remaining time
     total_task_duration = 300  # 5 minutes total
-    trivia_duration = max(10, total_task_duration - questionnaire_duration)  # At least 10 seconds
+    trivia_duration = int(max(10, total_task_duration - questionnaire_duration))  # At least 10 seconds
     
     print(f"Starting trivia task for {trivia_duration:.0f} seconds...")
     trivia = TriviaMCQWindow(

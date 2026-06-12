@@ -68,6 +68,7 @@ class Launcher(tk.Tk):
         self.configure(bg="#1f2937")
         self.process = None
         self._target_monitor = get_selected_monitor()
+        self._cleanup_stale_tracker_state()
 
         # Center window — scale by DPI factor so the window is the same physical size
         # regardless of Windows display scaling (DPI awareness is set at process start).
@@ -146,7 +147,7 @@ class Launcher(tk.Tk):
         quit_btn.pack(side="left", padx=4)
 
         # Ensure task/file attributes exist
-        self.task_reading = "https://read.gov/aesop/002.html"  # Default to Aesop's Fables
+        self.task_reading = ""
         self.task_video = ""
         self.task_interactive = ""
         self.sande = False
@@ -162,10 +163,12 @@ class Launcher(tk.Tk):
         # Load saved config (if any)
         self._load_config()
         
-        # Set default reading URL if not already set
+        # Set default reading file if not already set
         if not self.task_reading:
-            self.task_reading = "https://read.gov/aesop/002.html"
-            self._needs_config_save = True
+            default_story = os.path.join(self.save_dir or ROOT_DIR, "stories", "story_001.html")
+            if os.path.exists(default_story):
+                self.task_reading = default_story
+                self._needs_config_save = True
 
         # Set default trivia file if not already set
         if not self.task_interactive:
@@ -198,6 +201,154 @@ class Launcher(tk.Tk):
     def _center_window(self):
         set_tk_window_geometry(self, self.width, self.height, self._target_monitor)
 
+    @staticmethod
+    def _pid_exists(pid):
+        """Return True if a process with this PID exists."""
+        if not isinstance(pid, int) or pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+    def _cleanup_stale_tracker_state(self):
+        """Clean stale tracker IPC files and recover from orphaned tracker processes."""
+        ready_path = os.path.join(ROOT_DIR, "tracker.ready")
+        command_path = os.path.join(ROOT_DIR, "tracker.cmd")
+
+        if self.process is not None and self.process.poll() is not None:
+            self.process = None
+
+        ready_pid = None
+        if os.path.exists(ready_path):
+            try:
+                with open(ready_path, "r", encoding="utf-8") as f:
+                    ready_pid = int((f.read() or "").strip())
+            except Exception:
+                ready_pid = None
+
+        if ready_pid and self._pid_exists(ready_pid):
+            print(f"[WARN] Found running tracker process from ready file (PID {ready_pid}). Requesting shutdown.", file=sys.stderr)
+            try:
+                with open(command_path, "w", encoding="utf-8") as f:
+                    f.write("SHUTDOWN")
+            except Exception:
+                pass
+
+            deadline = time.time() + 2.0
+            while time.time() < deadline and self._pid_exists(ready_pid):
+                time.sleep(0.1)
+
+            if self._pid_exists(ready_pid):
+                try:
+                    subprocess.run(
+                        ["taskkill", "/PID", str(ready_pid), "/T", "/F"],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    print(f"[WARN] Forced tracker termination for PID {ready_pid}.", file=sys.stderr)
+                except Exception as e:
+                    print(f"[ERROR] Failed to terminate stale tracker PID {ready_pid}: {e}", file=sys.stderr)
+
+        removed = []
+        for path in (command_path, ready_path):
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                    removed.append(os.path.basename(path))
+                except Exception as e:
+                    print(f"[WARN] Could not remove stale file {path}: {e}", file=sys.stderr)
+        if removed:
+            print(f"[DEBUG] Cleaned stale tracker state: {', '.join(removed)}", file=sys.stderr)
+        if self.process is not None and self.process.poll() is not None:
+            self.process = None
+
+    def _tracker_ready_path(self):
+        return os.path.join(ROOT_DIR, "tracker.ready")
+
+    def _wait_for_tracker_ready(self, timeout_seconds=10.0):
+        """Wait until the tracker reports ready or exits."""
+        ready_path = self._tracker_ready_path()
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            if self.process is not None and self.process.poll() is not None:
+                return False, f"Tracker exited early with code {self.process.returncode}."
+            if os.path.exists(ready_path):
+                return True, ""
+            time.sleep(0.1)
+        return False, f"Tracker did not become ready within {timeout_seconds:.1f}s."
+
+    def _shutdown_tracker(self, reason=""):
+        """Stop the tracker process cleanly and clear any stale state."""
+        self._stop_prewarm_messages()
+
+        process = self.process
+        if process is None:
+            self._cleanup_stale_tracker_state()
+            return
+
+        if process.poll() is None:
+            try:
+                self._send_tracker_command("STOP_RECORDING")
+            except Exception:
+                pass
+            try:
+                self._send_tracker_command("SHUTDOWN")
+                process.wait(timeout=5)
+            except Exception:
+                try:
+                    process.terminate()
+                    process.wait(timeout=3)
+                except Exception:
+                    try:
+                        process.kill()
+                        process.wait(timeout=3)
+                    except Exception:
+                        pass
+
+        self.process = None
+        self._cleanup_stale_tracker_state()
+        if reason:
+            print(f"[DEBUG] Tracker shutdown complete: {reason}", file=sys.stderr)
+
+    def _reset_after_experiment(self):
+        """Return launcher UI and process state to a clean idle baseline."""
+        self._preview_verified = False
+        self._ready_confirmed = False
+        if hasattr(self, '_ready_timestamp'):
+            try:
+                self.after_cancel(self._ready_timestamp)
+            except Exception:
+                pass
+        self.start_btn.config(state="disabled", bg="#6b7280", fg="#d1d5db")
+        self.preview_btn.config(state="normal", bg="#3b82f6", fg="#fff", text="Preview")
+
+    def _validate_reading_ready(self):
+        """Ensure reading task points to a local downloaded stories directory."""
+        reading_path = (self.task_reading or "").strip()
+        if not reading_path:
+            return False, "Reading task is not configured."
+        if reading_path.startswith(("http://", "https://")):
+            return False, "Reading task must use downloaded local stories, not a URL."
+        if not os.path.exists(reading_path):
+            return False, f"Reading story file not found:\n{reading_path}"
+
+        story_dir = os.path.dirname(os.path.abspath(reading_path))
+        story_files = sorted(
+            f for f in os.listdir(story_dir)
+            if f.lower().endswith(".html")
+        )
+        if not story_files:
+            return False, f"No downloaded stories found in:\n{story_dir}"
+
+        if os.path.basename(reading_path) not in story_files:
+            self.task_reading = os.path.join(story_dir, story_files[0])
+            self._save_config()
+
+        return True, ""
+
     def _start_window_drag(self, event):
         self._drag_start_x = event.x_root
         self._drag_start_y = event.y_root
@@ -208,6 +359,68 @@ class Launcher(tk.Tk):
         dx = event.x_root - self._drag_start_x
         dy = event.y_root - self._drag_start_y
         self.geometry(f"+{self._window_start_x + dx}+{self._window_start_y + dy}")
+
+    def _show_completion_dialog(self, completed_name, score_line):
+        """Show a modal completion dialog with an explicit Quit button."""
+        dlg = tk.Toplevel(self)
+        dlg.title("Complete")
+        dlg.configure(bg="#111827")
+        dlg.resizable(False, False)
+        
+        # INCREASED WIDTH: Changed from 440 to 520
+        set_tk_window_geometry(dlg, 520, 220, self._target_monitor)
+        
+        dlg.transient(self)
+        dlg.grab_set()
+
+        title_font = font.Font(family="Segoe UI", size=13, weight="bold")
+        body_font = font.Font(family="Segoe UI", size=10)
+
+        tk.Label(
+            dlg,
+            text="Experiment completed successfully!",
+            bg="#111827",
+            fg="#e5e7eb",
+            font=title_font,
+        ).pack(padx=24, pady=(22, 12))
+
+        body_text = f"Participant: {completed_name}{score_line}"
+        tk.Label(
+            dlg,
+            text=body_text,
+            bg="#111827",
+            fg="#cbd5e1",
+            font=body_font,
+            justify="center",
+            # INCREASED WRAPLENGTH: Changed from 380 to 460 to match new width
+            wraplength=460,
+        ).pack(padx=24, pady=(0, 18))
+
+        def close_dialog(_event=None):
+            try:
+                dlg.grab_release()
+            except Exception:
+                pass
+            dlg.destroy()
+
+        quit_btn = tk.Button(
+            dlg,
+            text="Quit",
+            command=close_dialog,
+            bg="#10b981",
+            fg="#03241b",
+            padx=18,
+            pady=8,
+            relief="flat",
+            font=body_font,
+        )
+        quit_btn.pack(pady=(0, 20))
+        quit_btn.focus_set()
+
+        dlg.bind("<Return>", close_dialog)
+        dlg.bind("<Escape>", close_dialog)
+        dlg.protocol("WM_DELETE_WINDOW", close_dialog)
+        self.wait_window(dlg)
     
     def _send_tracker_command(self, command):
         """Send a command to the eye tracker via command file."""
@@ -252,6 +465,7 @@ class Launcher(tk.Tk):
 
     def start_tracker(self):
         # Start process and begin polling for readiness
+        self._cleanup_stale_tracker_state()
         name = self.name_var.get().strip()
         python_exe = find_python_executable()
         if getattr(sys, 'frozen', False):
@@ -427,31 +641,18 @@ class Launcher(tk.Tk):
 
     def stop_tracker(self):
         # Stop the running tracker process
-        self._stop_prewarm_messages()
         if self.process is None:
             self.status_label.config(text="Status: Idle", fg="#9ca3af")
             self.preview_btn.config(text="Preview", state="normal", bg="#3b82f6", fg="#fff")
             return
-        if self.process.poll() is None:
-            try:
-                self.process.terminate()
-                self.process.wait(timeout=3)
-                self.status_label.config(text="Status: Stopped", fg="#fca5a5")
-            except Exception:
-                try:
-                    self.process.kill()
-                except Exception:
-                    pass
-                self.status_label.config(text="Status: Stopped", fg="#fca5a5")
-        else:
-            self.status_label.config(text="Status: Idle", fg="#9ca3af")
-        self.process = None
+        self._shutdown_tracker(reason="manual stop")
+        self.status_label.config(text="Status: Stopped", fg="#fca5a5")
         # Reset button
         self.preview_btn.config(text="Preview", state="normal", bg="#3b82f6", fg="#fff")
 
     def _poll_ready(self):
         """Poll for the ready file or process exit to update UI state."""
-        ready_path = os.path.join(ROOT_DIR, "tracker.ready")
+        ready_path = self._tracker_ready_path()
         # If process exited
         if self.process is None or (self.process.poll() is not None):
             self.status_label.config(text="Status: Stopped", fg="#fca5a5")
@@ -510,6 +711,15 @@ class Launcher(tk.Tk):
         if not any([self.task_reading, self.task_video, self.task_interactive]):
             messagebox.showwarning("No Tasks", "Please configure at least one task in Setup before starting.")
             return
+
+        # Reading task is local-only and must be ready before starting.
+        reading_ok, reading_msg = self._validate_reading_ready()
+        if not reading_ok:
+            messagebox.showwarning(
+                "Reading Task Not Ready",
+                f"{reading_msg}\n\nUse Setup -> Reading task -> Download stories...",
+            )
+            return
         
         # Disable buttons during experiment
         self.start_btn.config(state="disabled")
@@ -531,6 +741,7 @@ class Launcher(tk.Tk):
 
     def _run_experiment_sequence(self):
         """Run the experiment tasks in sequence."""
+        experiment_completed = False
         try:
             name = self.name_var.get().strip()
             duration_seconds = self.duration_minutes * 60
@@ -540,6 +751,7 @@ class Launcher(tk.Tk):
             self.update()
             
             if self.process is None or self.process.poll() is not None:
+                self._cleanup_stale_tracker_state()
                 # Start tracker in headless mode
                 python_exe = find_python_executable()
                 if getattr(sys, 'frozen', False):
@@ -555,8 +767,11 @@ class Launcher(tk.Tk):
                 try:
                     self.process = subprocess.Popen(cmd, cwd=ROOT_DIR)
                     print(f"[DEBUG] Started headless tracker (PID {self.process.pid})", file=sys.stderr)
-                    # Wait a moment for tracker to initialize
-                    time.sleep(2)
+                    ready_ok, ready_msg = self._wait_for_tracker_ready(timeout_seconds=10.0)
+                    if not ready_ok:
+                        self._shutdown_tracker(reason="headless start failed")
+                        messagebox.showerror("Error", f"Failed to start tracker: {ready_msg}")
+                        return
                 except Exception as e:
                     messagebox.showerror("Error", f"Failed to start tracker: {e}")
                     return
@@ -580,11 +795,8 @@ class Launcher(tk.Tk):
                     sc, tot = self._run_interactive_task(name, duration_seconds)
                     trivia_score, trivia_total = sc, tot
             
-            # Stop eye tracker
-            self._send_tracker_command("SHUTDOWN")
-            if self.process:
-                self.process.wait(timeout=3)
-                self.process = None
+            # Stop eye tracker before resetting UI for the next participant.
+            self._shutdown_tracker(reason="experiment complete")
             
             self.status_label.config(text="Status: Experiment Complete!", fg="#86efac")
             if trivia_score is not None and trivia_total and trivia_total > 0:
@@ -593,24 +805,21 @@ class Launcher(tk.Tk):
             else:
                 score_line = ""
 
-            # Prepare launcher state for the next participant.
             completed_name = name
-            self._advance_task_order()
-            self.name_var.set(DEFAULT_PARTICIPANT_NAME)
-
-            messagebox.showinfo(
-                "Complete",
-                f"Experiment completed successfully!\n\nParticipant: {completed_name}{score_line}"
-            )
+            experiment_completed = True
+            self._show_completion_dialog(completed_name, score_line)
+            return
             
         except Exception as e:
+            self._shutdown_tracker(reason="experiment error")
             messagebox.showerror("Error", f"Error during experiment:\n{e}")
             self.status_label.config(text="Status: Error", fg="#fca5a5")
         finally:
-            # Reset preview verification state - user must re-run preview before next experiment
-            self._preview_verified = False
-            self.start_btn.config(state="disabled", bg="#6b7280", fg="#d1d5db")
-            self.preview_btn.config(state="normal", bg="#3b82f6", fg="#fff", text="Preview")
+            self._shutdown_tracker(reason="final cleanup")
+            if experiment_completed:
+                self.on_close()
+            else:
+                self._reset_after_experiment()
     
     def _stories_default_dir(self):
         """Return the directory where stories are (or will be) saved."""
@@ -747,7 +956,6 @@ class Launcher(tk.Tk):
                             dlg.after(0, lambda: dl_hint_ref.config(text=f"{n} stories already downloaded", fg="#10b981"))
                     else:
                         dlg.after(0, lambda: prog_var.set("No stories downloaded. Check the URL and connection."))
-                        dlg.after(0, lambda: dl_btn.config(state="normal", text="Download"))
                         dlg.after(0, lambda: cancel_btn.config(state="normal"))
                 except Exception as e:
                     dlg.after(0, lambda: prog_var.set(f"Error: {e}"))
@@ -777,6 +985,25 @@ class Launcher(tk.Tk):
         """Run the reading task."""
         if not self.task_reading:
             return
+        if self.task_reading.startswith(("http://", "https://")):
+            messagebox.showerror(
+                "Reading Task",
+                "Reading task only supports downloaded local stories. Use Setup -> Download stories.",
+            )
+            return
+
+        reading_ok, reading_msg = self._validate_reading_ready()
+        if not reading_ok:
+            messagebox.showerror("Reading Task", reading_msg)
+            return
+
+        story_dir = os.path.dirname(os.path.abspath(self.task_reading))
+        story_files = sorted(
+            f for f in os.listdir(story_dir)
+            if f.lower().endswith(".html")
+        )
+        total_stories = len(story_files)
+        print(f"[DEBUG] Reading task using {total_stories} local stories from {story_dir}", file=sys.stderr)
         
         from reading_window import show_reading_window
         
@@ -797,6 +1024,7 @@ class Launcher(tk.Tk):
                 save_dir=self.save_dir or ROOT_DIR,
                 participant_name=name,
                 order_code=self.task_order_code,
+                total_stories=total_stories,
             )
         except Exception as e:
             messagebox.showerror("Reading Task", f"Failed to launch reading window: {e}")
@@ -879,7 +1107,7 @@ class Launcher(tk.Tk):
         # Stop child process if running.
         if self.process is not None and self.process.poll() is None:
             if messagebox.askyesno("Quit", "Tracker is running. Stop it and quit?"):
-                self.stop_tracker()
+                self._shutdown_tracker(reason="launcher close")
             else:
                 self._closing = False
                 return
@@ -1026,11 +1254,7 @@ class Launcher(tk.Tk):
         def set_reading(path=None, get=False):
             if get:
                 return self.task_reading
-            # If path looks like a URL, treat as URL
-            if path and (path.startswith("http://") or path.startswith("https://")):
-                self.task_reading = path
-            else:
-                self.task_reading = path or ""
+            self.task_reading = path or ""
             self._save_config()
 
         def set_video(path=None, get=False):
@@ -1047,9 +1271,8 @@ class Launcher(tk.Tk):
 
         # Create task mapping for reordering based on task_order
         task_map = {
-            "Reading": ("Reading task (URL or file)", set_reading, [
-                ("Webpage URL", "*.url"),
-                ("Text files", "*.txt *.pdf"),
+            "Reading": ("Reading task (local HTML)", set_reading, [
+                ("HTML story files", "*.html"),
                 ("All files", "*.*")
             ]),
             "Video": ("Video task", set_video, [

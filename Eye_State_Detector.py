@@ -230,6 +230,34 @@ def draw_face_mesh(frame, display_pts: list, blink_left: float, blink_right: flo
                     (r_ctr[0] + 6, r_ctr[1] - 6), font, 0.45, r_col, 1, cv2.LINE_AA)
 
 
+def draw_centered_status_box(frame, text: str):
+    """Draw a centered status label with a dark background for readability."""
+    h, w = frame.shape[:2]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 0.9
+    thickness = 2
+    (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+
+    pad_x = 18
+    pad_y = 12
+    box_w = tw + pad_x * 2
+    box_h = th + pad_y * 2
+    x1 = max(0, (w - box_w) // 2)
+    y1 = max(0, (h - box_h) // 2)
+    x2 = min(w - 1, x1 + box_w)
+    y2 = min(h - 1, y1 + box_h)
+
+    # Semi-transparent background improves contrast over bright webcam frames.
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.65, frame, 0.35, 0.0, frame)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (235, 235, 235), 1)
+
+    text_x = x1 + pad_x
+    text_y = y1 + pad_y + th
+    cv2.putText(frame, text, (text_x, text_y), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
+
+
 # ---------------------------------------------------------------------------
 # CSV header & row helpers
 # ---------------------------------------------------------------------------
@@ -320,6 +348,9 @@ cap = cv2.VideoCapture(0, _cap_backend)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 
+if not cap.isOpened():
+    raise RuntimeError("Failed to open camera.")
+
 # Read back actual delivered resolution and calibrate focal length
 _actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 _actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -331,6 +362,13 @@ COMMAND_PATH = os.path.join(args.ipcdir if args.ipcdir else os.path.dirname(os.p
 
 ready_written = False
 window_closed = False
+
+try:
+    with open(READY_PATH, "w") as f:
+        f.write(str(os.getpid()))
+    ready_written = True
+except Exception:
+    pass
 
 if not HEADLESS:
     cv2.namedWindow("Eye State Detection", cv2.WINDOW_NORMAL)
@@ -353,6 +391,8 @@ current_csv_filename = None
 prev_crop            = None
 frame_times          = deque(maxlen=30)
 _last_ts_ms          = 0   # monotonic timestamp guard for VIDEO mode
+_no_face_since       = None
+_no_face_overlay_delay_s = 0.4
 
 # ---------------------------------------------------------------------------
 # IPC helpers
@@ -449,6 +489,7 @@ try:
         display_frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
         if result.face_landmarks:
+            _no_face_since = None
             landmarks = result.face_landmarks[0]   # 478 NormalizedLandmark objects
 
             # --- Blendshapes & head pose ---
@@ -581,6 +622,13 @@ try:
                     *_landmark_triplets(landmarks, RIGHT_IRIS),
                 ]
                 recorded_data.append(row)
+        else:
+            # Keep showing the live webcam feed even when no face is detected.
+            display_frame = cv2.resize(frame, (640, 480), interpolation=cv2.INTER_LINEAR)
+            if _no_face_since is None:
+                _no_face_since = time.time()
+            elif (time.time() - _no_face_since) >= _no_face_overlay_delay_s:
+                draw_centered_status_box(display_frame, "No face detected")
 
         # FPS overlay -- always top-left
         cv2.putText(display_frame, f"FPS: {fps:.1f}",
@@ -589,14 +637,6 @@ try:
         # --- Window display ---
         if not HEADLESS and not window_closed:
             cv2.imshow("Eye State Detection", display_frame)
-
-            if not ready_written:
-                try:
-                    with open(READY_PATH, "w") as f:
-                        f.write(str(os.getpid()))
-                    ready_written = True
-                except Exception:
-                    pass
 
             key = cv2.waitKey(1) & 0xFF
 

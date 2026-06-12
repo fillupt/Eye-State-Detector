@@ -1,0 +1,17 @@
+Stress Test Summary
+===================
+
+Total cycles: 6
+Passed: 6
+Failed: 0
+
+Task: reading
+  total=2, pass=2, fail=0, avg_elapsed=9.97s
+Task: video
+  total=2, pass=2, fail=0, avg_elapsed=14.29s
+Task: interactive
+  total=2, pass=2, fail=0, avg_elapsed=8.18s
+
+Failures
+--------
+None

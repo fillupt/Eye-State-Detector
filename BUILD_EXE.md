@@ -1,6 +1,6 @@
 # Building an Executable with PyInstaller
 
-This guide explains how to package the Eye-State-Detector application as a standalone Windows executable (.exe) for easy deployment to other machines.
+This guide explains how to package the Eye-State-Detector application as a standalone Windows executable (.exe) for deployment to other machines.
 
 ## Prerequisites
 
@@ -14,14 +14,8 @@ pip install pyinstaller
 
 The application uses python-vlc, which requires the VLC runtime to be present on the target machine.
 
-**Option A: Require VLC Installation (Recommended for simplicity)**
-- Have users install VLC from https://www.videolan.org/vlc/ on target machines before running the executable.
-- This is the simplest approach and reduces the .exe size.
-
-**Option B: Bundle VLC DLLs (Advanced)**
-- Install VLC on your build machine to extract DLLs.
-- Manually copy required VLC DLLs to the packaged application directory.
-- This approach makes the executable fully standalone but increases size significantly.
+**VLC Installation**
+- Install VLC from https://www.videolan.org/vlc/ on target machines before running the executable.
 
 ## Building the Executable
 
@@ -95,6 +89,10 @@ C:\git\
 ```
 
 ## Distribution to Another Machine
+
+### Remember the ancillary files
+1. json file for MCQ
+2. Video (mp4) for video task
 
 ### For --onedir Build:
 

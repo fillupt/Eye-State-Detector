@@ -1,17 +1,17 @@
 ﻿import os
-import re
+import json
 import webview
-import tkinter as tk
-import threading
 import time
+from urllib.parse import unquote, urlparse
 from monitor_geometry import get_selected_monitor
 
 
 def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
-                        save_dir=None, participant_name=None, order_code=None):
+                        save_dir=None, participant_name=None, order_code=None,
+                        auto_advance_seconds=None, total_stories=None):
+    timeout_url = "about:blank#reading-timeout"
     # Window size and position
     width, height = 1600, 1000
-    bar_height = 40
     # Centering logic for Windows
     from ctypes import windll
 
@@ -30,45 +30,94 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
     logical_w = int(monitor['work_width'] / scale_factor)
     logical_h = int(monitor['work_height'] / scale_factor)
 
-    max_width = max(900, logical_w - 80)
-    max_height = max(600, logical_h - 120)
+    max_width = max(1500, logical_w - 80)
+    max_height = max(900, logical_h - 80)
     width = min(width, max_width)
     height = min(height, max_height)
 
     webview_left = logical_x + int((logical_w - width) / 2)
     webview_top = logical_y + int((logical_h - height) / 2)
 
-    # Timer bar positioned directly below webview
-    timer_left = int(webview_left * scale_factor)
-    timer_top = int((webview_top + height) * scale_factor) - 80
-    timer_width = int(width * scale_factor) - 30  # Adjust for window borders
-
     print(
         f"Monitor #{monitor['display_number']} ({monitor['work_x']},{monitor['work_y']}) "
         f"{monitor['work_width']}x{monitor['work_height']}, Scale: {scale_factor}, "
-        f"Webview: ({webview_left},{webview_top}), Timer: ({timer_left},{timer_top}) width={timer_width}"
+        f"Webview: ({webview_left},{webview_top})"
     )
 
-    # Shared state for timer and webview
-    webview_window = None
-    timer_root = None
-    webview_loaded = False
-    next_btn_ref = [None]  # mutable ref to the Next Story button widget
-    story_label_ref = [None]  # mutable ref to the story counter label
+    # Shared state for webview lifecycle
+    timed_out = [False]
 
     # Story tracking - all times in ms relative to task_start_time
     task_start_time = time.time()
     story_log = []      # list of {url, shown_ms, next_clicked_ms}
-    next_url = [None]   # next-page URL extracted before stripping hrefs
 
     # Count total stories if reading from a local directory of HTML files
+    requested_total_stories = total_stories
     total_stories = [0]
+    local_story_paths = []
+    story_index_by_norm = {}
+
+    def _norm_local_path(value):
+        if not value:
+            return ""
+        try:
+            parsed = urlparse(value)
+            if parsed.scheme == "file":
+                p = unquote(parsed.path or "")
+                if os.name == "nt" and len(p) >= 3 and p[0] == "/" and p[2] == ":":
+                    p = p[1:]
+                p = p.replace("/", os.sep)
+            elif parsed.scheme:
+                return ""
+            else:
+                p = value
+            return os.path.normcase(os.path.normpath(os.path.abspath(p)))
+        except Exception:
+            return ""
+
     if not url.startswith('http://') and not url.startswith('https://'):
         try:
             story_dir = os.path.dirname(os.path.abspath(url))
-            total_stories[0] = len([f for f in os.listdir(story_dir) if f.endswith('.html')])
+            local_story_paths = sorted(
+                [
+                    os.path.abspath(os.path.join(story_dir, f))
+                    for f in os.listdir(story_dir)
+                    if f.lower().endswith('.html')
+                ],
+                key=lambda p: os.path.basename(p).lower(),
+            )
+            story_index_by_norm = {_norm_local_path(p): i for i, p in enumerate(local_story_paths)}
+            computed_total = len(local_story_paths)
+            total_stories[0] = int(requested_total_stories) if isinstance(requested_total_stories, int) and requested_total_stories > 0 else computed_total
         except Exception:
             pass
+
+    def _next_story_url(current_url, story_number):
+        """Return (target_url, wraps_to_first) for local downloaded stories.
+
+        Use sequence order as the primary source of truth because pywebview URL reads
+        may intermittently fail on some systems; this avoids click events that log
+        successfully but appear to not navigate.
+        """
+        if not local_story_paths:
+            return None, False
+
+        # Primary: deterministic sequence index from loaded story count.
+        # story_number is 1-based; next_idx is 0-based.
+        if story_number > 0:
+            next_idx = story_number % len(local_story_paths)
+            wraps = next_idx == 0
+            # Relative target is more reliable with local HTML stories.
+            return os.path.basename(local_story_paths[next_idx]), wraps
+
+        # Fallback (should rarely execute): infer from current URL.
+        current_norm = _norm_local_path(current_url)
+        idx = story_index_by_norm.get(current_norm)
+        if idx is None:
+            idx = story_index_by_norm.get(_norm_local_path(url), -1)
+        next_idx = (idx + 1) % len(local_story_paths)
+        wraps = idx >= 0 and next_idx == 0
+        return os.path.basename(local_story_paths[next_idx]), wraps
 
     def _elapsed_ms():
         return (time.time() - task_start_time) * 1000
@@ -79,126 +128,16 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
             if story_log and story_log[-1]['next_clicked_ms'] is None:
                 story_log[-1]['next_clicked_ms'] = _elapsed_ms()
                 print(f'[DEBUG] In-page Next click recorded at {story_log[-1]["next_clicked_ms"]:.0f}ms')
+        def notify_time_expired(self):
+            if timed_out[0]:
+                return
+            timed_out[0] = True
+            print('[DEBUG] Reading task timer expired')
 
     api_obj = _ReadingApi()
 
-    def update_timer_position():
-        """Update timer bar position to stay below webview."""
-        if timer_root and timer_root.winfo_exists():
-            timer_root.geometry(f'{timer_width}x{bar_height}+{timer_left}+{timer_top}')
-            timer_root.lift()
-            timer_root.attributes('-topmost', True)
-
-    def on_next_clicked():
-        """Navigate to the next story when the Next Story button is clicked."""
-        # Stamp click time only if not already captured by the in-page Next handler
-        if story_log and story_log[-1]['next_clicked_ms'] is None:
-            story_log[-1]['next_clicked_ms'] = _elapsed_ms()
-
-        target = next_url[0]
-        if not target:
-            # Fallback: increment the story number in the current URL
-            if story_log:
-                current = story_log[-1]['url']
-                match = re.search(r'(\d+)(\.html)$', current, re.IGNORECASE)
-                if match:
-                    n = int(match.group(1))
-                    padded = str(n + 1).zfill(len(match.group(1)))
-                    target = current[:match.start()] + padded + match.group(2)
-
-        if target:
-            next_url[0] = None  # Clear until next on_loaded fires
-            try:
-                webview_window.load_url(target)
-            except Exception as e:
-                print(f'[ERROR] Could not navigate to next story: {e}')
-        else:
-            # No next story found - disable the button
-            if next_btn_ref[0] and timer_root and timer_root.winfo_exists():
-                timer_root.after(0, lambda: next_btn_ref[0].config(state='disabled', bg='#6b7280'))
-
-    def start_timer_bar():
-        nonlocal timer_root
-        timer_root = tk.Tk()
-        timer_root.title('Reading Task Timer')
-        timer_root.overrideredirect(True)  # Remove window decorations
-        timer_root.configure(bg='#374151')
-
-        # Set initial geometry immediately
-        timer_root.geometry(f'{timer_width}x{bar_height}+{timer_left}+{timer_top}')
-        timer_root.attributes('-topmost', True)
-
-        progress_frame = tk.Frame(timer_root, bg='#374151', height=bar_height)
-        progress_frame.pack(fill='both', expand=True)
-        progress_frame.pack_propagate(False)
-
-        progress_bar = tk.Frame(progress_frame, bg='#10b981')
-        progress_bar.place(x=0, y=0, relwidth=1.0, relheight=1.0)
-
-        progress_label = tk.Label(
-            progress_frame,
-            text=f'Time remaining: {duration_seconds//60}:{duration_seconds%60:02d}',
-            bg='#10b981',
-            fg='#ffffff',
-            font=('Segoe UI', 10)
-        )
-        progress_label.place(relx=0.5, rely=0.5, anchor='center')
-
-        # Next Story button - pinned to the right end of the timer bar
-        next_btn = tk.Button(
-            progress_frame,
-            text='Next Story \u2192',
-            command=on_next_clicked,
-            bg='#3b82f6', fg='#ffffff',
-            font=('Segoe UI', 10, 'bold'),
-            relief='flat', cursor='hand2',
-            padx=10,
-        )
-        next_btn.place(relx=1.0, rely=0.5, anchor='e', x=-4)
-        next_btn_ref[0] = next_btn
-
-        # Story counter label - pinned to the left end of the timer bar
-        story_label = tk.Label(
-            progress_frame,
-            text='Story 0',
-            bg='#374151',
-            fg='#e5e7eb',
-            font=('Segoe UI', 10, 'bold'),
-            padx=10,
-        )
-        story_label.place(relx=0.0, rely=0.5, anchor='w', x=4)
-        story_label_ref[0] = story_label
-
-        start_time = time.time()
-        def update_timer():
-            elapsed = time.time() - start_time
-            remaining = max(0, duration_seconds - elapsed)
-            ratio = remaining / duration_seconds if duration_seconds > 0 else 0
-            progress_bar.place(x=0, y=0, relwidth=ratio, relheight=1.0)
-            mins = int(remaining // 60)
-            secs = int(remaining % 60)
-            progress_label.config(text=f'Time remaining: {mins}:{secs:02d}')
-
-            # Reposition timer bar periodically if webview has loaded
-            if webview_loaded:
-                update_timer_position()
-
-            if remaining <= 0:
-                timer_root.after(500, timer_root.destroy)
-                # Close webview window properly
-                if webview_window:
-                    webview_window.destroy()
-            else:
-                timer_root.after(50, update_timer)
-        update_timer()
-        timer_root.mainloop()
-
-    print('Starting timer bar thread...')
-    timer_thread = threading.Thread(target=start_timer_bar, daemon=True)
-    timer_thread.start()
-
     print('Creating webview window...')
-    webview_window = webview.create_window(
+    window = webview.create_window(
         'Reading Task',
         url,
         width=width,
@@ -207,21 +146,33 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
         y=webview_top,
         resizable=False,
         frameless=True,
+        on_top=True,
         easy_drag=False,
         js_api=api_obj
     )
+    if window is None:
+        print('[ERROR] Failed to create reading webview window')
+        return
 
     def on_loaded():
-        nonlocal webview_loaded
-        webview_loaded = True
-        time.sleep(0.1)
-        update_timer_position()
-
         # Record the current story URL and when it was shown
         try:
-            current_url = webview_window.evaluate_js('window.location.href') or url
+            current_url = window.evaluate_js('window.location.href') or url
         except Exception:
             current_url = url
+
+        if current_url.startswith(timeout_url):
+            if not timed_out[0]:
+                timed_out[0] = True
+                print('[DEBUG] Reading task timer expired')
+            try:
+                window.destroy()
+            except Exception as e:
+                print(f'[ERROR] Could not close reading window after timeout: {e}')
+            return
+
+        if timed_out[0]:
+            return
 
         story_log.append({
             'url': current_url,
@@ -233,14 +184,24 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
         n = len(story_log)
         total = total_stories[0]
         counter_text = f'Story {n} of {total}' if total > 0 else f'Story {n}'
-        if story_label_ref[0] and timer_root and timer_root.winfo_exists():
-            timer_root.after(0, lambda t=counter_text: story_label_ref[0].config(text=t))
+        remaining_seconds = max(0, int(duration_seconds - (time.time() - task_start_time)))
+        target_href, wraps_to_first = _next_story_url(current_url, n)
+        if target_href:
+            print(f"[DEBUG] Story {n}: next target -> {target_href}")
 
-        # Disable interactivity, wire in-page Next to record click, return next URL.
+        # Disable interactivity, inject timer + next controls, return next URL.
         # Uses double quotes throughout — EdgeHTML eval has issues with single-quoted JS strings.
         # join('\n') is also avoided as the Python '\n' becomes a literal newline inside a JS string literal.
         _js = (
-            "(function() {"
+            "(function(counterText, remainingSeconds, autoAdvanceSeconds, targetHref, wrapsToFirst) {"
+            " if (window.__readingTimerInterval) {"
+            "  clearInterval(window.__readingTimerInterval);"
+            "  window.__readingTimerInterval = null;"
+            " }"
+            " if (window.__blinkrAutoNextInterval) {"
+            "  clearInterval(window.__blinkrAutoNextInterval);"
+            "  window.__blinkrAutoNextInterval = null;"
+            " }"
             " document.querySelectorAll(\"[onclick]\").forEach(function(el) {"
             "  el.removeAttribute(\"onclick\");"
             " });"
@@ -250,7 +211,8 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
             "   nextLink = a;"
             "  }"
             " });"
-            " if (nextLink) {"
+            " if (nextLink && !nextLink.__blinkrRecordHooked) {"
+            "  nextLink.__blinkrRecordHooked = true;"
             "  nextLink.addEventListener(\"click\", function() {"
             "   if (window.pywebview && window.pywebview.api) {"
             "    window.pywebview.api.record_next_click();"
@@ -263,9 +225,100 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
             "   a.removeAttribute(\"onclick\");"
             "  }"
             " });"
+            " var timerBar = document.getElementById(\"__blinkrTimerBar\");"
+            " if (timerBar) timerBar.remove();"
+            " timerBar = document.createElement(\"div\");"
+            " timerBar.id = \"__blinkrTimerBar\";"
+            " timerBar.style.position = \"fixed\";"
+            " timerBar.style.left = \"0\";"
+            " timerBar.style.right = \"0\";"
+            " timerBar.style.bottom = \"0\";"
+            " timerBar.style.height = \"40px\";"
+            " timerBar.style.background = \"#374151\";"
+            " timerBar.style.display = \"flex\";"
+            " timerBar.style.alignItems = \"center\";"
+            " timerBar.style.justifyContent = \"space-between\";"
+            " timerBar.style.padding = \"0 10px\";"
+            " timerBar.style.boxSizing = \"border-box\";"
+            " timerBar.style.zIndex = \"2147483646\";"
+            " timerBar.style.fontFamily = \"Segoe UI, sans-serif\";"
+            " timerBar.style.userSelect = \"none\";"
+            " var storyLabel = document.createElement(\"span\");"
+            " storyLabel.textContent = counterText;"
+            " storyLabel.style.color = \"#e5e7eb\";"
+            " storyLabel.style.fontWeight = \"700\";"
+            " var timerLabel = document.createElement(\"span\");"
+            " timerLabel.style.color = \"#ffffff\";"
+            " timerLabel.style.fontWeight = \"700\";"
+            " timerLabel.style.margin = \"0 8px\";"
+            " var nextBtn = document.createElement(\"button\");"
+            " nextBtn.textContent = \"Next Story\";"
+            " nextBtn.style.background = \"#3b82f6\";"
+            " nextBtn.style.color = \"#ffffff\";"
+            " nextBtn.style.border = \"none\";"
+            " nextBtn.style.borderRadius = \"6px\";"
+            " nextBtn.style.padding = \"6px 10px\";"
+            " nextBtn.style.fontWeight = \"700\";"
+            " nextBtn.style.cursor = \"pointer\";"
+            " nextBtn.style.pointerEvents = \"auto\";"
+            " nextBtn.style.marginLeft = \"8px\";"
+            " var rightWrap = document.createElement(\"div\");"
+            " rightWrap.style.display = \"flex\";"
+            " rightWrap.style.alignItems = \"center\";"
+            " rightWrap.appendChild(timerLabel);"
+            " rightWrap.appendChild(nextBtn);"
+            " timerBar.appendChild(storyLabel);"
+            " timerBar.appendChild(rightWrap);"
+            " document.body.appendChild(timerBar);"
+            " function formatTime(totalSeconds) {"
+            "  var mins = Math.floor(totalSeconds / 60);"
+            "  var secs = totalSeconds % 60;"
+            "  return \"Time remaining: \" + mins + \":\" + (secs < 10 ? \"0\" + secs : secs);"
+            " }"
+            " if (wrapsToFirst) {"
+            "  nextBtn.textContent = \"Back to First Story\";"
+            " }"
+            " if (!targetHref) {"
+            "  nextBtn.disabled = true;"
+            "  nextBtn.style.background = \"#6b7280\";"
+            "  nextBtn.style.cursor = \"default\";"
+            " }"
+            " function goNext() {"
+            "  if (!targetHref) return;"
+            "  if (window.pywebview && window.pywebview.api) {"
+            "   window.pywebview.api.record_next_click();"
+            "  }"
+            "  if (nextLink && nextLink.href) {"
+            "   try { nextLink.click(); return; } catch (e) {}"
+            "  }"
+            "  window.location.href = targetHref;"
+            " }"
+            " nextBtn.addEventListener(\"click\", function() { goNext(); }, true);"
+            " var autoSecs = parseFloat(autoAdvanceSeconds);"
+            " if (targetHref && isFinite(autoSecs) && autoSecs > 0) {"
+            "  window.__blinkrAutoNextInterval = setInterval(function() {"
+            "   goNext();"
+            "  }, Math.max(250, autoSecs * 1000));"
+            " }"
+            " var remaining = Math.max(0, parseInt(remainingSeconds, 10) || 0);"
+            " timerLabel.textContent = formatTime(remaining);"
+            " window.__readingTimerInterval = setInterval(function() {"
+            "  remaining = Math.max(0, remaining - 1);"
+            "  timerLabel.textContent = formatTime(remaining);"
+            "  if (remaining <= 0) {"
+            "   clearInterval(window.__readingTimerInterval);"
+            "   window.__readingTimerInterval = null;"
+            "   if (window.__blinkrAutoNextInterval) {"
+            "    clearInterval(window.__blinkrAutoNextInterval);"
+            "    window.__blinkrAutoNextInterval = null;"
+            "   }"
+            "   window.location.href = \"about:blank#reading-timeout\";"
+            "  }"
+            " }, 1000);"
             " var style = document.createElement(\"style\");"
             " style.textContent = \"a,button,input,select,textarea,label{"
             "pointer-events:none!important;cursor:default!important}"
+            "#__blinkrTimerBar,#__blinkrTimerBar *{pointer-events:auto!important}"
             "img{pointer-events:none!important}\";"
             " document.head.appendChild(style);"
             " if (nextLink) {"
@@ -286,30 +339,37 @@ def show_reading_window(url, on_ready_callback=None, duration_seconds=300,
             "  var el = document.getElementById(id);"
             "  if (el) el.remove();"
             " });"
+            " document.body.style.paddingBottom = \"48px\";"
             " document.body.style.opacity = \"1\";"
-            " return nextLink ? nextLink.href : null;"
-            "})()"
+            " return targetHref || null;"
+            "})(__COUNTER__, __REMAINING__, __AUTONEXT__, __TARGET__, __WRAPS__)"
         )
         try:
-            extracted = webview_window.evaluate_js(_js)
-            next_url[0] = extracted if extracted else None
+            js_payload = _js.replace('__COUNTER__', json.dumps(counter_text)).replace(
+                '__REMAINING__', str(remaining_seconds)
+            ).replace('__AUTONEXT__', json.dumps(auto_advance_seconds)).replace(
+                '__TARGET__', json.dumps(target_href)
+            ).replace(
+                '__WRAPS__', json.dumps(wraps_to_first)
+            )
+            window.evaluate_js(js_payload)
         except Exception as e:
             print(f'[ERROR] Could not disable interactivity: {e}')
-            next_url[0] = None
-
-        time.sleep(0.1)
-        update_timer_position()
 
         # Fire on_ready_callback only on the first story load
         if len(story_log) == 1 and on_ready_callback:
             on_ready_callback()
 
-    webview_window.events.loaded += on_loaded
+    window.events.loaded += on_loaded
 
     try:
-        webview.start(None, webview_window, gui='edgehtml')
+        webview.start(gui='edgechromium')
     except Exception as e:
-        print(f'Exception in webview.start: {e}')
+        print(f'[WARN] edgechromium backend failed: {e}')
+        try:
+            webview.start(gui='mshtml')
+        except Exception as e2:
+            print(f'Exception in webview.start: {e2}')
 
     # Save story navigation log once webview has closed
     _save_reading_log(story_log, save_dir, participant_name, order_code)
