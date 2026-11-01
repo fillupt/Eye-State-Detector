@@ -58,6 +58,3 @@ Notes
   * Trivia results: `trivia/` subfolder
 - `eye_state_detection.ipynb` was removed in favor of a script-first workflow.
 - The virtual environment directory `eye-env/` is gitignored to avoid committing large files.
-
-If you want the launcher to pass selected task files and flags to `Eye_State_Detector.py`, I can add safe CLI flags and wire them
-up so the detector receives those values. For now the launcher remains the master and the detector is left unchanged.
